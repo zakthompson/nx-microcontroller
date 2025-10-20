@@ -1,0 +1,2 @@
+/Users/zak/repos/Nintendo-Switch-Remote-Control/controller-relay/bin/Release/net9.0/win-x64/publish/controller-relay.pdb
+/Users/zak/repos/Nintendo-Switch-Remote-Control/controller-relay/bin/Release/net9.0/win-x64/publish/controller-relay.exe

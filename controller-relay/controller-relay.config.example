@@ -1,0 +1,49 @@
+# Controller Relay Configuration File
+#
+# Place this file in the same directory as the controller-relay executable
+# and rename it to "controller-relay.config" (remove the .example extension)
+
+# CompanionApp: Path to an application that should launch when controller-relay starts
+# and close when controller-relay exits. Useful for launching screen capture software.
+#
+# Examples:
+#   CompanionApp="C:\Program Files\OBS Studio\bin\64bit\obs64.exe"
+#   CompanionApp="C:\Users\YourName\Desktop\SwitchCapture.exe"
+#
+# Leave blank or comment out to disable:
+# CompanionApp=""
+
+CompanionApp=""
+
+# Auto-Click: Automatically click at specific coordinates after launching the companion app
+# This is useful for clicking a "fullscreen" button or other UI element automatically.
+#
+# AutoClickX: X coordinate in pixels
+# AutoClickY: Y coordinate in pixels
+# AutoClickDelay: Milliseconds to wait after launching app before clicking (default: 2000)
+# AutoClickRelative: If true, coordinates are relative to window; if false, absolute screen coordinates (default: true)
+#
+# RECOMMENDED: Use window-relative coordinates (AutoClickRelative=true)
+# This way it works regardless of where the window is positioned on screen.
+#
+# To find window-relative coordinates:
+# 1. Launch your companion app manually
+# 2. Note where the fullscreen button is relative to the top-left corner of the window
+# 3. Example: If the button is 50 pixels from the left edge and 20 pixels from the top:
+#    AutoClickX=50
+#    AutoClickY=20
+#
+# To find absolute screen coordinates (if AutoClickRelative=false):
+# Windows PowerShell: [System.Windows.Forms.Cursor]::Position
+#
+# Examples (window-relative):
+#   AutoClickX=50
+#   AutoClickY=20
+#   AutoClickDelay=2000
+#   AutoClickRelative=true
+#
+# Leave blank or comment out to disable:
+# AutoClickX=
+# AutoClickY=
+# AutoClickDelay=2000
+# AutoClickRelative=true
