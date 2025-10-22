@@ -11,20 +11,34 @@ import json
 import sys
 import argparse
 import base64
+from typing import List, Dict, Any
 
 
-def json_to_c_header(json_file, loop_macro=False):
-    """Convert JSON macro file to C header format."""
+def json_to_c_header(json_file: str, loop_macro: bool = False) -> str:
+    """
+    Convert JSON macro file to C header format.
+
+    Args:
+        json_file: Path to the input JSON macro file
+        loop_macro: Whether to enable macro looping
+
+    Returns:
+        C header file content as a string
+    """
 
     with open(json_file, 'r') as f:
-        frames = json.load(f)
+        frames: List[Dict[str, Any]] = json.load(f)
 
     if not frames:
-        print("Error: Empty macro file", file=sys.stderr)
+        print(f"Error: Macro file '{json_file}' contains no frames", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(frames, list):
+        print(f"Error: Macro file '{json_file}' must contain a JSON array of frames", file=sys.stderr)
         sys.exit(1)
 
     # Generate header
-    output = []
+    output: List[str] = []
     output.append("// Auto-generated from macro JSON file")
     output.append("// DO NOT EDIT MANUALLY")
     output.append("")
@@ -66,12 +80,15 @@ def json_to_c_header(json_file, loop_macro=False):
         # Decode packet - it might be base64 string or byte array
         if isinstance(packet_data, str):
             # Base64 encoded string from C# serializer
-            packet = base64.b64decode(packet_data)
+            try:
+                packet = base64.b64decode(packet_data)
+            except Exception as e:
+                raise ValueError(f"Invalid base64 packet at frame {i}: {e}")
         elif isinstance(packet_data, list):
             # Already a list of bytes
             packet = bytes(packet_data)
         else:
-            raise ValueError(f"Unknown packet format at frame {i}: {type(packet_data)}")
+            raise ValueError(f"Invalid packet format at frame {i}: expected string or array, got {type(packet_data).__name__}")
 
         # Format packet bytes as hex
         packet_str = ", ".join(f"0x{b:02X}" for b in packet)
@@ -87,7 +104,8 @@ def json_to_c_header(json_file, loop_macro=False):
     return "\n".join(output)
 
 
-def main():
+def main() -> None:
+    """Main entry point for the macro conversion script."""
     parser = argparse.ArgumentParser(
         description='Convert JSON macro file to C header for embedded firmware'
     )

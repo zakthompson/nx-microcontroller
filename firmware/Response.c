@@ -107,6 +107,7 @@ void process_OUT_report(uint8_t* ReportData, uint8_t ReportSize) {
 }
 
 void send_IN_report(void) {
+    // Call pre-send callback if configured (used for updating reports before transmission)
     if (before_send != NULL) {
         before_send();
     }

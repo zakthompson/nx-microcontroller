@@ -57,12 +57,6 @@ static inline void send_byte(uint8_t c) {
     UDR1 = c;
 }
 
-/*inline void send_string(const char *str) {
-    while (*str) {
-        send_byte(*str++);
-    }
-}*/
-
 // Section 19.7.1 of datasheet
 static inline uint8_t recv_byte(void) {
     // Wait for data to be received

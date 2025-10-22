@@ -1,3 +1,14 @@
+/*
+ * JoystickStandalone.c
+ *
+ * Standalone Nintendo Switch Pro Controller emulation firmware with embedded macro playback.
+ * This firmware plays back pre-recorded macros stored in program memory (PROGMEM) without
+ * requiring a PC, serial connection, or external controller.
+ *
+ * The macro is embedded at compile time via embedded_macro.h (generated from macro.json).
+ * Build with: make standalone MACRO=path/to/macro.json [LOOP=1]
+ */
+
 #include "Joystick.h"
 #include <util/delay.h>
 
@@ -12,8 +23,8 @@ static uint32_t macro_playback_index = 0;
 static uint32_t macro_start_millis = 0;
 static bool macro_started = false;
 
-// Read a macro frame from PROGMEM
-static void read_macro_frame(uint32_t index, EmbeddedMacroFrame_t* frame) {
+// Read a macro frame from PROGMEM to RAM
+static inline void read_macro_frame(uint32_t index, EmbeddedMacroFrame_t* frame) {
     memcpy_P(frame, &embedded_macro_frames[index], sizeof(EmbeddedMacroFrame_t));
 }
 
@@ -68,10 +79,10 @@ static void get_macro_packet(uint32_t current_millis, uint8_t* report) {
     memcpy(report, current_frame.packet, 8);
 }
 
-// Convert macro packet to firmware format (swap button bytes!)
+// Convert macro packet to firmware format
 // This mirrors populate_report_from_serial from Joystick.c
 static void populate_report_from_macro(uint8_t *in, uint8_t *report) {
-    // Buttons (firmware expects lo first, hi second - SWAP from macro format!)
+    // Buttons - swap byte order from macro format [hi, lo] to firmware format [lo, hi]
     uint16_t buttons = ((uint16_t)in[0] << 8) | in[1];
     report[0] = buttons & 0xFF;          // lo byte
     report[1] = (buttons >> 8) & 0xFF;   // hi byte
@@ -79,19 +90,25 @@ static void populate_report_from_macro(uint8_t *in, uint8_t *report) {
     // Hat
     report[2] = (in[2] <= 8) ? in[2] : 8;
 
-    // Axes - copy directly WITHOUT smoothing
-    // Smoothing is not needed for timestamp-based playback and can cause
-    // overshooting because it prevents quick stops
-    report[3] = in[3];  // lx
-    report[4] = in[4];  // ly
-    report[5] = in[5];  // rx
-    report[6] = in[6];  // ry
-    report[7] = 0x00;
+    // Axes - copy directly without smoothing
+    // Note: Smoothing is intentionally disabled for timestamp-based playback
+    // because it can cause overshooting by preventing quick stops
+    report[3] = in[3];  // LX
+    report[4] = in[4];  // LY
+    report[5] = in[5];  // RX
+    report[6] = in[6];  // RY
+    report[7] = 0x00;   // Vendor-specific byte
 }
 #endif
 
-// Neutral fallback report
-static const uint8_t neutral_report[8] = {0x00, 0x00, 0x08, 0x80, 0x80, 0x80, 0x80, 0x00};
+// Neutral report (all buttons released, sticks centered)
+static const uint8_t neutral_report[8] = {
+    0x00, 0x00,  // Buttons: none pressed
+    0x08,        // Hat: centered
+    0x80, 0x80,  // Left stick: centered
+    0x80, 0x80,  // Right stick: centered
+    0x00         // Vendor-specific
+};
 
 // -----------------------------
 // Hardware setup
@@ -148,12 +165,12 @@ void HID_Task(void)
         uint8_t packet[8];
         uint8_t report[8];
 
-        // Track actual elapsed time (endpoint polls at ~125Hz = every 8ms)
+        // Track elapsed time (USB endpoint polls at ~125Hz = every 8ms)
         static uint32_t millis = 0;
         static bool startup_delay_done = false;
 
-        // Wait ~2 seconds after USB config before starting macro
-        // This gives the Switch time to fully recognize the controller
+        // Startup delay: wait ~2 seconds after USB config before starting macro
+        // to give the Switch time to fully recognize the controller
         if (!startup_delay_done) {
             if (millis < 2000) {
                 millis += 8;

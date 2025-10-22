@@ -1,4 +1,6 @@
-#pragma once
+#ifndef DESCRIPTORS_H
+#define DESCRIPTORS_H
+
 #include <LUFA/Drivers/USB/USB.h>
 
 /** Interface IDs */
@@ -34,3 +36,5 @@ uint16_t CALLBACK_USB_GetDescriptor(
     const uint16_t wIndex,
     const void** const DescriptorAddress
 ) ATTR_WARN_UNUSED_RESULT ATTR_NON_NULL_PTR_ARG(3);
+
+#endif // DESCRIPTORS_H
