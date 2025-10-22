@@ -41,6 +41,7 @@ OPTIMIZATION = s
 
 
 # Target file name (without extension).
+# Use 'make standalone' to build standalone macro firmware
 TARGET = Joystick
 
 
@@ -100,6 +101,34 @@ include $(LUFA_PATH)/Build/lufa_avrdude.mk
 include $(LUFA_PATH)/Build/lufa_atprogram.mk
 
 clean: mostlyclean
+	rm -f embedded_macro.h
+	rm -f JoystickStandalone.hex JoystickStandalone.elf JoystickStandalone.eep JoystickStandalone.bin
+	rm -f JoystickStandalone.lss JoystickStandalone.sym JoystickStandalone.map
+
+# Build standalone macro firmware
+# Usage: make standalone MACRO=path/to/macro.json [LOOP=1]
+standalone:
+	@if [ -z "$(MACRO)" ]; then \
+		echo "Error: MACRO parameter required"; \
+		echo "Usage: make standalone MACRO=path/to/macro.json [LOOP=1]"; \
+		exit 1; \
+	fi
+	@echo "Converting macro to C header..."
+	@python3 macro_to_c.py $(MACRO) $(if $(LOOP),--loop,) -o embedded_macro.h
+	@echo "Building standalone firmware with embedded macro..."
+	@$(MAKE) TARGET=JoystickStandalone CC_FLAGS="$(CC_FLAGS) -DEMBEDDED_MACRO_ENABLED=1" all
+	@echo "Standalone firmware built: JoystickStandalone.hex"
+	@echo "Flash with: make flash-standalone"
+
+# Flash standalone firmware
+flash-standalone:
+	@if [ ! -f JoystickStandalone.hex ]; then \
+		echo "Error: JoystickStandalone.hex not found. Run 'make standalone MACRO=...' first"; \
+		exit 1; \
+	fi
+	sudo dfu-programmer $(MCU) erase
+	sudo dfu-programmer $(MCU) flash JoystickStandalone.hex
+	sudo dfu-programmer $(MCU) reset
 
 flash: all
 	sudo dfu-programmer $(MCU) erase

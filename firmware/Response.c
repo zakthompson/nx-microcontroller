@@ -107,7 +107,9 @@ void process_OUT_report(uint8_t* ReportData, uint8_t ReportSize) {
 }
 
 void send_IN_report(void) {
-    before_send();
+    if (before_send != NULL) {
+        before_send();
+    }
 
     if (!nextPacketReady) {
         // No requests from Switch, use standard report

@@ -1,2 +1,18 @@
 /cmake-build-debug
 /.idea
+
+# Generated macro files
+embedded_macro.h
+test_macro.json
+
+# Build outputs
+*.hex
+*.elf
+*.eep
+*.lss
+*.map
+*.sym
+*.o
+*.d
+*.lst
+obj/

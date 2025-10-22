@@ -29,6 +29,24 @@ To the best of my knowledge, this is the first attempt to emulate a Pro Controll
 
 I have kept the original firmware [here](https://github.com/javmarina/Nintendo-Switch-Remote-Control/tree/HORIPAD) for future reference.
 
+# Standalone Macro Firmware
+
+**NEW:** You can now build firmware with embedded macros that run automatically when plugged into a Switch, without needing a PC or controller-relay!
+
+Perfect for:
+- Sharing macros with others who don't have the full setup
+- Running macros without a PC connected
+- Farming/grinding in games
+
+See **[STANDALONE_MACRO_BUILD.md](STANDALONE_MACRO_BUILD.md)** for detailed instructions.
+
+Quick start:
+```bash
+# Record a macro with controller-relay first, then:
+make standalone MACRO=../controller-relay/macro.json LOOP=1
+make flash-standalone
+```
+
 # Compilation instructions
 
 The LUFA library is provided in this repository as a [git submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules). After `git clone`, you will need to run `git submodule update --init --recursive` in order to fetch the library folder. You can also clone this repository using `git clone --recurse-submodules`, which will clone and download all submodules in one step.
