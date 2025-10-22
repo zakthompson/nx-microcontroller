@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.IO.Ports;
+using System.Text.Json;
 using System.Threading;
 using System.Linq;
 using SharpDX.XInput;
@@ -58,6 +61,28 @@ namespace SwitchController
         static int autoClickDelay = 2000; // Default 2 seconds
         static bool autoClickRelative = true; // Default to window-relative coordinates
 
+        // ====== Macro recording/playback state ======
+        static bool isRecording = false;
+        static bool isPlayingMacro = false;
+        static bool isLoopingMacro = false;
+        static List<MacroFrame> recordedMacro = new List<MacroFrame>();
+        static int macroPlaybackIndex = 0;
+        static long macroPlaybackStartTime = 0;
+        static long recordingStartTime = 0;
+        static byte[] lastRecordedPacket = null;
+        static bool lastL3State = false;
+        static bool lastAState = false;
+        static bool lastXState = false;
+        static bool lastYState = false;
+        static string macroFilePath = "";
+
+        // ====== Macro data structure ======
+        class MacroFrame
+        {
+            public long TimestampMs { get; set; }
+            public byte[] Packet { get; set; } = new byte[8];
+        }
+
         static void Main(string[] args)
         {
             if (args.Length < 1)
@@ -68,6 +93,11 @@ namespace SwitchController
 
             // --- Load config file if it exists ---
             LoadConfig();
+
+            // --- Set up macro file path and load existing macro if present ---
+            string exeDir = AppContext.BaseDirectory;
+            macroFilePath = Path.Combine(exeDir, "macro.json");
+            LoadMacro();
 
             // --- Open serial ---
             string portName = args[0];
@@ -129,26 +159,120 @@ namespace SwitchController
                 }
                 nextTick += UPDATE_MS;
 
-                if (!controller.IsConnected)
+                // Allow macro playback to continue even when controller is disconnected
+                if (!controller.IsConnected && !isPlayingMacro && !isLoopingMacro)
                 {
                     Console.Write("\rController disconnected...");
                     Thread.Sleep(250);
                     continue;
                 }
 
-                var state = controller.GetState();
-                var gp = state.Gamepad;
+                // Only read controller state if connected
+                Gamepad gp = default(Gamepad);
+                bool controllerConnected = controller.IsConnected;
+
+                if (controllerConnected)
+                {
+                    var state = controller.GetState();
+                    gp = state.Gamepad;
+                }
+
+                // --- Detect button states for edge detection (only when controller connected) ---
+                bool l3Pressed = controllerConnected && (gp.Buttons & GamepadButtonFlags.LeftThumb) != 0;
+                bool aPressed = controllerConnected && (gp.Buttons & GamepadButtonFlags.A) != 0;
+                bool xPressed = controllerConnected && (gp.Buttons & GamepadButtonFlags.X) != 0;
+                bool yPressed = controllerConnected && (gp.Buttons & GamepadButtonFlags.Y) != 0;
+                bool bPressed = controllerConnected && (gp.Buttons & GamepadButtonFlags.B) != 0;
 
                 // --- Check for exit combo: Left Stick Click + B ---
-                if ((gp.Buttons & GamepadButtonFlags.LeftThumb) != 0 &&
-                    (gp.Buttons & GamepadButtonFlags.B) != 0)
+                if (l3Pressed && bPressed)
                 {
                     Console.WriteLine("\n\nExit combo detected (L3 + B). Shutting down...");
                     running = false;
                     break;
                 }
 
-                byte[] packet = BuildPacket8BitPokken(gp);
+                // --- Check for macro button combos (edge-triggered) ---
+                // L3 + A: Start/Stop recording
+                if (l3Pressed && aPressed && (!lastL3State || !lastAState))
+                {
+                    if (!isPlayingMacro && !isLoopingMacro)
+                    {
+                        if (!isRecording)
+                        {
+                            StartRecording(sw.ElapsedMilliseconds);
+                        }
+                        else
+                        {
+                            StopRecording();
+                        }
+                    }
+                }
+
+                // L3 + X: Play macro once
+                if (l3Pressed && xPressed && (!lastL3State || !lastXState))
+                {
+                    if (!isRecording && recordedMacro.Count > 0)
+                    {
+                        StartPlayback(sw.ElapsedMilliseconds, loop: false);
+                    }
+                }
+
+                // L3 + Y: Loop macro
+                if (l3Pressed && yPressed && (!lastL3State || !lastYState))
+                {
+                    if (!isRecording && recordedMacro.Count > 0)
+                    {
+                        if (isLoopingMacro)
+                        {
+                            StopPlayback();
+                        }
+                        else
+                        {
+                            StartPlayback(sw.ElapsedMilliseconds, loop: true);
+                        }
+                    }
+                }
+
+                // Update last button states
+                lastL3State = l3Pressed;
+                lastAState = aPressed;
+                lastXState = xPressed;
+                lastYState = yPressed;
+
+                // --- Build packet from current gamepad state or macro playback ---
+                byte[] packet;
+                if (isPlayingMacro || isLoopingMacro)
+                {
+                    packet = GetMacroPacket(sw.ElapsedMilliseconds);
+                    if (packet == null)
+                    {
+                        // Macro playback finished
+                        if (isLoopingMacro)
+                        {
+                            // Restart the loop
+                            macroPlaybackIndex = 0;
+                            macroPlaybackStartTime = sw.ElapsedMilliseconds;
+                            packet = recordedMacro[0].Packet;
+                        }
+                        else
+                        {
+                            // Single playback finished
+                            StopPlayback();
+                            packet = BuildPacket8BitPokken(gp);
+                        }
+                    }
+                }
+                else
+                {
+                    packet = BuildPacket8BitPokken(gp);
+                }
+
+                // --- Record frame if recording ---
+                if (isRecording)
+                {
+                    RecordFrame(sw.ElapsedMilliseconds, packet);
+                }
                 byte crc = Crc8Ccitt(packet, 0, packet.Length);
 
                 try
@@ -178,9 +302,19 @@ namespace SwitchController
                 // Update console less frequently to reduce latency
                 if (sw.ElapsedMilliseconds % 500 < UPDATE_MS)
                 {
+                    string status = "";
+                    if (isRecording)
+                        status = $" [RECORDING: {recordedMacro.Count} frames]";
+                    else if (isLoopingMacro)
+                        status = $" [LOOPING: {macroPlaybackIndex}/{recordedMacro.Count}]";
+                    else if (isPlayingMacro)
+                        status = $" [PLAYING: {macroPlaybackIndex}/{recordedMacro.Count}]";
+                    else if (recordedMacro.Count > 0)
+                        status = $" [Macro ready: {recordedMacro.Count} frames]";
+
                     Console.Write(
                         $"\rBtn:{gp.Buttons,-18} LT:{gp.LeftTrigger,3} RT:{gp.RightTrigger,3} " +
-                        $"LX:{gp.LeftThumbX,6} LY:{gp.LeftThumbY,6} RX:{gp.RightThumbX,6} RY:{gp.RightThumbY,6}  "
+                        $"LX:{gp.LeftThumbX,6} LY:{gp.LeftThumbY,6} RX:{gp.RightThumbX,6} RY:{gp.RightThumbY,6}{status}  "
                     );
                 }
             }
@@ -889,6 +1023,168 @@ namespace SwitchController
                 // Ignore errors
             }
             return -1;
+        }
+
+        // ====== Macro recording/playback functions ======
+
+        static void StartRecording(long currentTime)
+        {
+            isRecording = true;
+            recordedMacro.Clear();
+            macroPlaybackIndex = 0;
+            recordingStartTime = currentTime;
+            lastRecordedPacket = null;
+            Console.WriteLine("\n[MACRO] Recording started! Press L3 + A again to stop.");
+        }
+
+        static void StopRecording()
+        {
+            isRecording = false;
+            lastRecordedPacket = null;
+            Console.WriteLine($"\n[MACRO] Recording stopped. {recordedMacro.Count} unique frames captured.");
+            SaveMacro();
+        }
+
+        static void RecordFrame(long currentTime, byte[] packet)
+        {
+            // Only record if packet has changed from last recorded packet
+            if (lastRecordedPacket != null)
+            {
+                bool isDifferent = false;
+                for (int i = 0; i < 8; i++)
+                {
+                    if (packet[i] != lastRecordedPacket[i])
+                    {
+                        isDifferent = true;
+                        break;
+                    }
+                }
+
+                if (!isDifferent)
+                    return; // Skip identical packets
+            }
+
+            // Store frame with relative timestamp from recording start
+            long relativeTime = currentTime - recordingStartTime;
+            var frame = new MacroFrame
+            {
+                TimestampMs = relativeTime,
+                Packet = new byte[8]
+            };
+            Array.Copy(packet, frame.Packet, 8);
+            recordedMacro.Add(frame);
+
+            // Update last recorded packet
+            if (lastRecordedPacket == null)
+                lastRecordedPacket = new byte[8];
+            Array.Copy(packet, lastRecordedPacket, 8);
+        }
+
+        static void StartPlayback(long currentTime, bool loop)
+        {
+            isPlayingMacro = !loop;
+            isLoopingMacro = loop;
+            macroPlaybackIndex = 0;
+            macroPlaybackStartTime = currentTime;
+
+            string mode = loop ? "LOOPING" : "PLAYING ONCE";
+            Console.WriteLine($"\n[MACRO] {mode} - {recordedMacro.Count} frames. " +
+                            (loop ? "Press L3 + Y to stop." : ""));
+        }
+
+        static void StopPlayback()
+        {
+            isPlayingMacro = false;
+            isLoopingMacro = false;
+            macroPlaybackIndex = 0;
+            Console.WriteLine("\n[MACRO] Playback stopped.");
+        }
+
+        static byte[] GetMacroPacket(long currentTime)
+        {
+            if (recordedMacro.Count == 0)
+                return null;
+
+            // Calculate elapsed time since playback started
+            long elapsedMs = currentTime - macroPlaybackStartTime;
+
+            // Find the appropriate frame based on elapsed time
+            // Frames are stored with timestamps indicating when they should be applied
+
+            // If we're beyond the last frame's timestamp, playback is done
+            if (macroPlaybackIndex >= recordedMacro.Count - 1 &&
+                elapsedMs >= recordedMacro[recordedMacro.Count - 1].TimestampMs)
+            {
+                return null; // Playback finished
+            }
+
+            // Find the current frame: the latest frame whose timestamp has been reached
+            while (macroPlaybackIndex < recordedMacro.Count - 1 &&
+                   elapsedMs >= recordedMacro[macroPlaybackIndex + 1].TimestampMs)
+            {
+                macroPlaybackIndex++;
+            }
+
+            // Return the current frame's packet
+            return recordedMacro[macroPlaybackIndex].Packet;
+        }
+
+        static void SaveMacro()
+        {
+            try
+            {
+                if (recordedMacro.Count == 0)
+                {
+                    Console.WriteLine("[MACRO] No frames to save.");
+                    return;
+                }
+
+                // Frames already have relative timestamps from recording
+                var json = JsonSerializer.Serialize(recordedMacro, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+
+                File.WriteAllText(macroFilePath, json);
+
+                long durationMs = recordedMacro[recordedMacro.Count - 1].TimestampMs;
+                double durationSec = durationMs / 1000.0;
+                Console.WriteLine($"[MACRO] Saved {recordedMacro.Count} frames to {Path.GetFileName(macroFilePath)}");
+                Console.WriteLine($"[MACRO] Duration: {durationSec:F2}s");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MACRO] Error saving macro: {ex.Message}");
+            }
+        }
+
+        static void LoadMacro()
+        {
+            try
+            {
+                if (!File.Exists(macroFilePath))
+                {
+                    Console.WriteLine("[MACRO] No saved macro found.");
+                    return;
+                }
+
+                var json = File.ReadAllText(macroFilePath);
+                var frames = JsonSerializer.Deserialize<List<MacroFrame>>(json);
+
+                if (frames != null && frames.Count > 0)
+                {
+                    recordedMacro = frames;
+                    long durationMs = recordedMacro[recordedMacro.Count - 1].TimestampMs;
+                    double durationSec = durationMs / 1000.0;
+                    Console.WriteLine($"[MACRO] Loaded {recordedMacro.Count} frames from {Path.GetFileName(macroFilePath)}");
+                    Console.WriteLine($"[MACRO] Duration: {durationSec:F2}s");
+                    Console.WriteLine("[MACRO] Press L3 + X to play once, L3 + Y to loop");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MACRO] Error loading macro: {ex.Message}");
+            }
         }
     }
 }
