@@ -34,6 +34,36 @@ namespace SwitchController
         public bool AutoClickRelative { get; set; } = true;
 
         /// <summary>
+        /// Hotkey enable button (must be held with other buttons for hotkey combos)
+        /// </summary>
+        public SwitchButton HotkeyEnable { get; set; } = SwitchButton.LS;
+
+        /// <summary>
+        /// Button to press with HotkeyEnable to send HOME button
+        /// </summary>
+        public SwitchButton HotkeySendHome { get; set; } = SwitchButton.Plus;
+
+        /// <summary>
+        /// Button to press with HotkeyEnable to quit controller relay
+        /// </summary>
+        public SwitchButton HotkeyQuit { get; set; } = SwitchButton.RS;
+
+        /// <summary>
+        /// Button to press with HotkeyEnable to start/stop macro recording
+        /// </summary>
+        public SwitchButton HotkeyMacroRecord { get; set; } = SwitchButton.B;
+
+        /// <summary>
+        /// Button to press with HotkeyEnable to run macro once
+        /// </summary>
+        public SwitchButton HotkeyMacroPlayOnce { get; set; } = SwitchButton.A;
+
+        /// <summary>
+        /// Button to press with HotkeyEnable to run macro on loop
+        /// </summary>
+        public SwitchButton HotkeyMacroLoop { get; set; } = SwitchButton.X;
+
+        /// <summary>
         /// Loads configuration from controller-relay.config file in the application directory
         /// </summary>
         /// <returns>Configuration object with loaded settings</returns>
@@ -89,12 +119,52 @@ namespace SwitchController
                         config.AutoClickRelative = val == "true" || val == "1" || val == "yes";
                         Console.WriteLine($"  Auto-click relative: {config.AutoClickRelative}");
                     }
+                    else if (TryParseConfigLine(trimmed, "HotkeyEnable=", out string? hotkeyEnableStr) && TryParseButton(hotkeyEnableStr, out var hotkeyEnable))
+                    {
+                        config.HotkeyEnable = hotkeyEnable;
+                        Console.WriteLine($"  Hotkey enable: {hotkeyEnable}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "HotkeySendHome=", out string? hotkeySendHomeStr) && TryParseButton(hotkeySendHomeStr, out var hotkeySendHome))
+                    {
+                        config.HotkeySendHome = hotkeySendHome;
+                        Console.WriteLine($"  Hotkey send home: {hotkeySendHome}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "HotkeyQuit=", out string? hotkeyQuitStr) && TryParseButton(hotkeyQuitStr, out var hotkeyQuit))
+                    {
+                        config.HotkeyQuit = hotkeyQuit;
+                        Console.WriteLine($"  Hotkey quit: {hotkeyQuit}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "HotkeyMacroRecord=", out string? hotkeyMacroRecordStr) && TryParseButton(hotkeyMacroRecordStr, out var hotkeyMacroRecord))
+                    {
+                        config.HotkeyMacroRecord = hotkeyMacroRecord;
+                        Console.WriteLine($"  Hotkey macro record: {hotkeyMacroRecord}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "HotkeyMacroPlayOnce=", out string? hotkeyMacroPlayOnceStr) && TryParseButton(hotkeyMacroPlayOnceStr, out var hotkeyMacroPlayOnce))
+                    {
+                        config.HotkeyMacroPlayOnce = hotkeyMacroPlayOnce;
+                        Console.WriteLine($"  Hotkey macro play once: {hotkeyMacroPlayOnce}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "HotkeyMacroLoop=", out string? hotkeyMacroLoopStr) && TryParseButton(hotkeyMacroLoopStr, out var hotkeyMacroLoop))
+                    {
+                        config.HotkeyMacroLoop = hotkeyMacroLoop;
+                        Console.WriteLine($"  Hotkey macro loop: {hotkeyMacroLoop}");
+                    }
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error loading config: {ex.Message}");
             }
+
+            // Print hotkey configuration
+            Console.WriteLine();
+            Console.WriteLine("Hotkey Configuration:");
+            Console.WriteLine($"  Hotkey Enable: {config.HotkeyEnable}");
+            Console.WriteLine($"  {config.HotkeyEnable} + {config.HotkeySendHome} = Send HOME button");
+            Console.WriteLine($"  {config.HotkeyEnable} + {config.HotkeyQuit} = Quit controller relay");
+            Console.WriteLine($"  {config.HotkeyEnable} + {config.HotkeyMacroRecord} = Start/Stop macro recording");
+            Console.WriteLine($"  {config.HotkeyEnable} + {config.HotkeyMacroPlayOnce} = Run macro once");
+            Console.WriteLine($"  {config.HotkeyEnable} + {config.HotkeyMacroLoop} = Toggle macro loop");
 
             return config;
         }
@@ -125,6 +195,25 @@ namespace SwitchController
                 return value.Substring(1, value.Length - 2);
 
             return value;
+        }
+
+        /// <summary>
+        /// Attempts to parse a button name from a configuration value
+        /// </summary>
+        private static bool TryParseButton(string? value, out SwitchButton button)
+        {
+            button = SwitchButton.None;
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            string unquoted = UnquoteValue(value).Trim();
+            if (Enum.TryParse<SwitchButton>(unquoted, ignoreCase: true, out var parsed))
+            {
+                button = parsed;
+                return true;
+            }
+
+            return false;
         }
     }
 }

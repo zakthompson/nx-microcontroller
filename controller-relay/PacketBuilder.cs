@@ -65,18 +65,7 @@ namespace SwitchController
             if (gamepad.LeftTrigger > TRIGGER_THRESHOLD) btn |= BTN_ZL;
             if (gamepad.RightTrigger > TRIGGER_THRESHOLD) btn |= BTN_ZR;
 
-            // Special combo: Select + Y -> HOME button
-            bool selectPressed = (gamepad.Buttons & GamepadButtonFlags.Back) != 0;
-            bool yPressed = (gamepad.Buttons & GamepadButtonFlags.Y) != 0;
-            if (selectPressed && yPressed)
-            {
-                btn |= BTN_HOME;
-                // Clear MINUS and X to avoid triggering on Switch
-                btn &= unchecked((ushort)(~BTN_MINUS));
-                btn &= unchecked((ushort)(~BTN_X));
-            }
-
-            // Force HOME if requested (for 'H' key press)
+            // Force HOME if requested (from hotkey combo or 'H' key press)
             if (forceHome)
             {
                 btn |= BTN_HOME;

@@ -15,14 +15,13 @@ namespace SwitchController
         private static SerialConnection? _serial;
         private static MacroSystem? _macroSystem;
         private static CompanionAppManager? _companionAppManager;
+        private static Configuration? _config;
         private static bool _running = true;
         private static bool _forceHomeOnce = false;
 
-        // Button state tracking for edge detection
-        private static bool _lastL3State = false;
-        private static bool _lastAState = false;
-        private static bool _lastXState = false;
-        private static bool _lastYState = false;
+        // Button state tracking for edge detection (using SwitchButton enum)
+        private static readonly System.Collections.Generic.Dictionary<SwitchButton, bool> _lastButtonStates =
+            new System.Collections.Generic.Dictionary<SwitchButton, bool>();
 
         static void Main(string[] args)
         {
@@ -37,7 +36,7 @@ namespace SwitchController
             }
 
             // Load configuration
-            var config = Configuration.Load();
+            _config = Configuration.Load();
 
             // Initialize macro system
             string macroFilePath = Path.Combine(AppContext.BaseDirectory, "macro.json");
@@ -80,7 +79,7 @@ namespace SwitchController
             Console.WriteLine("\nController connected.");
 
             // Launch companion app if configured
-            _companionAppManager = new CompanionAppManager(config);
+            _companionAppManager = new CompanionAppManager(_config);
             _companionAppManager.Launch();
 
             // Run main loop
@@ -160,30 +159,96 @@ namespace SwitchController
         }
 
         /// <summary>
+        /// Checks if a specific Switch button is currently pressed
+        /// </summary>
+        private static bool IsButtonPressed(bool controllerConnected, Gamepad gamepad, SwitchButton button)
+        {
+            if (!controllerConnected || button == SwitchButton.None)
+                return false;
+
+            switch (button)
+            {
+                case SwitchButton.LS:
+                    return (gamepad.Buttons & GamepadButtonFlags.LeftThumb) != 0;
+                case SwitchButton.RS:
+                    return (gamepad.Buttons & GamepadButtonFlags.RightThumb) != 0;
+                case SwitchButton.Up:
+                    return (gamepad.Buttons & GamepadButtonFlags.DPadUp) != 0;
+                case SwitchButton.Down:
+                    return (gamepad.Buttons & GamepadButtonFlags.DPadDown) != 0;
+                case SwitchButton.Left:
+                    return (gamepad.Buttons & GamepadButtonFlags.DPadLeft) != 0;
+                case SwitchButton.Right:
+                    return (gamepad.Buttons & GamepadButtonFlags.DPadRight) != 0;
+                case SwitchButton.L:
+                    return (gamepad.Buttons & GamepadButtonFlags.LeftShoulder) != 0;
+                case SwitchButton.R:
+                    return (gamepad.Buttons & GamepadButtonFlags.RightShoulder) != 0;
+                case SwitchButton.ZL:
+                    return gamepad.LeftTrigger > TRIGGER_THRESHOLD;
+                case SwitchButton.ZR:
+                    return gamepad.RightTrigger > TRIGGER_THRESHOLD;
+                case SwitchButton.A:
+                    // Switch A (right button) = Xbox B (right button)
+                    return (gamepad.Buttons & GamepadButtonFlags.B) != 0;
+                case SwitchButton.B:
+                    // Switch B (bottom button) = Xbox A (bottom button)
+                    return (gamepad.Buttons & GamepadButtonFlags.A) != 0;
+                case SwitchButton.X:
+                    // Switch X (top button) = Xbox Y (top button)
+                    return (gamepad.Buttons & GamepadButtonFlags.Y) != 0;
+                case SwitchButton.Y:
+                    // Switch Y (left button) = Xbox X (left button)
+                    return (gamepad.Buttons & GamepadButtonFlags.X) != 0;
+                case SwitchButton.Plus:
+                    return (gamepad.Buttons & GamepadButtonFlags.Start) != 0;
+                case SwitchButton.Minus:
+                    return (gamepad.Buttons & GamepadButtonFlags.Back) != 0;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
         /// Handles macro recording and playback controls via button combos
         /// </summary>
         private static void HandleMacroControls(bool controllerConnected, Gamepad gamepad, long currentTime)
         {
-            if (_macroSystem == null)
+            if (_macroSystem == null || _config == null)
                 return;
 
-            // Detect button states (only when controller connected)
-            bool l3Pressed = controllerConnected && (gamepad.Buttons & GamepadButtonFlags.LeftThumb) != 0;
-            bool aPressed = controllerConnected && (gamepad.Buttons & GamepadButtonFlags.A) != 0;
-            bool xPressed = controllerConnected && (gamepad.Buttons & GamepadButtonFlags.X) != 0;
-            bool yPressed = controllerConnected && (gamepad.Buttons & GamepadButtonFlags.Y) != 0;
-            bool bPressed = controllerConnected && (gamepad.Buttons & GamepadButtonFlags.B) != 0;
+            // Check if hotkey enable button is pressed
+            bool hotkeyEnablePressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyEnable);
 
-            // Exit combo: L3 + B
-            if (l3Pressed && bPressed)
+            // Check each configurable button
+            bool quitPressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyQuit);
+            bool recordPressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyMacroRecord);
+            bool playOncePressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyMacroPlayOnce);
+            bool loopPressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyMacroLoop);
+            bool sendHomePressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeySendHome);
+
+            // Exit combo: HotkeyEnable + HotkeyQuit
+            if (hotkeyEnablePressed && quitPressed)
             {
-                Console.WriteLine("\n\nExit combo detected (L3 + B). Shutting down...");
+                Console.WriteLine($"\n\nExit combo detected ({_config.HotkeyEnable} + {_config.HotkeyQuit}). Shutting down...");
                 _running = false;
                 return;
             }
 
-            // Record toggle: L3 + A (edge-triggered)
-            if (l3Pressed && aPressed && (!_lastL3State || !_lastAState))
+            // Send HOME combo: HotkeyEnable + HotkeySendHome (state-based, like old exit)
+            if (hotkeyEnablePressed && sendHomePressed)
+            {
+                _forceHomeOnce = true;
+            }
+
+            // Get last states for edge detection
+            bool lastHotkeyEnable = _lastButtonStates.ContainsKey(_config.HotkeyEnable) && _lastButtonStates[_config.HotkeyEnable];
+            bool lastRecord = _lastButtonStates.ContainsKey(_config.HotkeyMacroRecord) && _lastButtonStates[_config.HotkeyMacroRecord];
+            bool lastPlayOnce = _lastButtonStates.ContainsKey(_config.HotkeyMacroPlayOnce) && _lastButtonStates[_config.HotkeyMacroPlayOnce];
+            bool lastLoop = _lastButtonStates.ContainsKey(_config.HotkeyMacroLoop) && _lastButtonStates[_config.HotkeyMacroLoop];
+
+            // Record toggle: HotkeyEnable + HotkeyMacroRecord (edge-triggered)
+            if (hotkeyEnablePressed && recordPressed && (!lastHotkeyEnable || !lastRecord))
             {
                 if (!_macroSystem.IsPlaying && !_macroSystem.IsLooping)
                 {
@@ -198,8 +263,8 @@ namespace SwitchController
                 }
             }
 
-            // Play once: L3 + X (edge-triggered)
-            if (l3Pressed && xPressed && (!_lastL3State || !_lastXState))
+            // Play once: HotkeyEnable + HotkeyMacroPlayOnce (edge-triggered)
+            if (hotkeyEnablePressed && playOncePressed && (!lastHotkeyEnable || !lastPlayOnce))
             {
                 if (!_macroSystem.IsRecording && _macroSystem.FrameCount > 0)
                 {
@@ -207,8 +272,8 @@ namespace SwitchController
                 }
             }
 
-            // Loop toggle: L3 + Y (edge-triggered)
-            if (l3Pressed && yPressed && (!_lastL3State || !_lastYState))
+            // Loop toggle: HotkeyEnable + HotkeyMacroLoop (edge-triggered)
+            if (hotkeyEnablePressed && loopPressed && (!lastHotkeyEnable || !lastLoop))
             {
                 if (!_macroSystem.IsRecording && _macroSystem.FrameCount > 0)
                 {
@@ -224,10 +289,12 @@ namespace SwitchController
             }
 
             // Update last button states for edge detection
-            _lastL3State = l3Pressed;
-            _lastAState = aPressed;
-            _lastXState = xPressed;
-            _lastYState = yPressed;
+            _lastButtonStates[_config.HotkeyEnable] = hotkeyEnablePressed;
+            _lastButtonStates[_config.HotkeyQuit] = quitPressed;
+            _lastButtonStates[_config.HotkeyMacroRecord] = recordPressed;
+            _lastButtonStates[_config.HotkeyMacroPlayOnce] = playOncePressed;
+            _lastButtonStates[_config.HotkeyMacroLoop] = loopPressed;
+            _lastButtonStates[_config.HotkeySendHome] = sendHomePressed;
         }
 
         /// <summary>

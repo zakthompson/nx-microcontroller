@@ -61,4 +61,28 @@ namespace SwitchController
         public const byte HAT_UP_LEFT = 0x07;
         public const byte HAT_NEUTRAL = 0x08;
     }
+
+    /// <summary>
+    /// Switch controller button names for configuration
+    /// </summary>
+    public enum SwitchButton
+    {
+        None,
+        LS,      // Left stick click
+        RS,      // Right stick click
+        Up,      // D-Pad Up
+        Down,    // D-Pad Down
+        Left,    // D-Pad Left
+        Right,   // D-Pad Right
+        L,       // Left shoulder
+        R,       // Right shoulder
+        ZL,      // Left trigger
+        ZR,      // Right trigger
+        A,       // A button
+        B,       // B button
+        X,       // X button
+        Y,       // Y button
+        Plus,    // Plus/Start button
+        Minus    // Minus/Select button
+    }
 }
