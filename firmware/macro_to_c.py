@@ -13,6 +13,7 @@ import sys
 import argparse
 import base64
 import re
+import os
 from typing import List, Dict, Any, Optional, Tuple
 
 
@@ -45,17 +46,42 @@ RIGHT_STICK = {
 
 NEUTRAL_KEYWORDS = {'WAIT', 'NOTHING', 'NEUTRAL'}
 
+MAX_INCLUDE_DEPTH = 10
 
-def parse_text_macro(file_path: str) -> List[Dict[str, Any]]:
+
+def parse_text_macro(file_path: str, include_chain: Optional[set] = None, depth: int = 0) -> List[Dict[str, Any]]:
     """
-    Parse a human-readable text macro file into frame format.
+    Parse a human-readable text macro file into frame format with include support.
 
     Args:
         file_path: Path to the .macro text file
+        include_chain: Set of already included files (for circular dependency detection)
+        depth: Current include depth (for max depth checking)
 
     Returns:
         List of frames in the same format as JSON: [{'TimestampMs': int, 'Packet': [bytes]}]
     """
+    # Initialize include chain if this is the top-level call
+    if include_chain is None:
+        include_chain = set()
+
+    # Get absolute path for this file
+    abs_file_path = os.path.abspath(file_path)
+    base_directory = os.path.dirname(abs_file_path)
+
+    # Check recursion depth
+    if depth > MAX_INCLUDE_DEPTH:
+        print(f"Error: Maximum include depth of {MAX_INCLUDE_DEPTH} exceeded in {file_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Add this file to the include chain
+    if abs_file_path in include_chain:
+        chain_str = ' -> '.join(include_chain) + ' -> ' + abs_file_path
+        print(f"Error: Circular include detected: {chain_str}", file=sys.stderr)
+        sys.exit(1)
+
+    include_chain = include_chain | {abs_file_path}
+
     frames = []
     current_timestamp = 0
     prev_state = None
@@ -73,6 +99,53 @@ def parse_text_macro(file_path: str) -> List[Dict[str, Any]]:
                 line = line[:line.index('#')].strip()
             if '//' in line:
                 line = line[:line.index('//')].strip()
+
+            # Handle include directive
+            if line.startswith('@'):
+                include_path = line[1:].strip()
+
+                try:
+                    # Resolve path relative to base directory
+                    if os.path.isabs(include_path):
+                        full_include_path = include_path
+                    else:
+                        full_include_path = os.path.abspath(os.path.join(base_directory, include_path))
+
+                    # Check if file exists
+                    if not os.path.exists(full_include_path):
+                        print(f"Error on line {line_num}: Include file not found: {full_include_path}", file=sys.stderr)
+                        sys.exit(1)
+
+                    # Recursively parse included file
+                    included_frames = parse_text_macro(full_include_path, include_chain, depth + 1)
+
+                    # Merge included frames into current frames, adjusting timestamps
+                    for included_frame in included_frames:
+                        # Skip the final neutral frame from included file
+                        if included_frame == included_frames[-1]:
+                            continue
+
+                        # Adjust timestamp to be relative to current position
+                        adjusted_timestamp = current_timestamp + included_frame['TimestampMs']
+                        frames.append({
+                            'TimestampMs': adjusted_timestamp,
+                            'Packet': included_frame['Packet']
+                        })
+
+                    # Update current timestamp based on the last included frame's timestamp
+                    if len(included_frames) > 1:
+                        # Get the duration from the included macro (last timestamp before neutral frame)
+                        last_included_timestamp = included_frames[-2]['TimestampMs'] if len(included_frames) > 1 else 0
+                        # Calculate duration from last included frame
+                        if len(included_frames) > 1:
+                            included_duration = included_frames[-1]['TimestampMs']
+                            current_timestamp += included_duration
+
+                except Exception as e:
+                    print(f"Error on line {line_num} processing include: {e}", file=sys.stderr)
+                    sys.exit(1)
+
+                continue
 
             # Parse line: inputs,duration
             # Need to handle commas inside L(x,y) or R(x,y)
