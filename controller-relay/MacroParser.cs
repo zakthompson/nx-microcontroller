@@ -211,14 +211,17 @@ namespace SwitchController
             string inputsPart = parts[0].Trim();
             string durationPart = parts[1].Trim();
 
-            // Parse duration
-            if (!MacroFormat.TryParseInt(durationPart, out int duration))
+            // Parse duration (in frames)
+            if (!MacroFormat.TryParseInt(durationPart, out int durationFrames))
                 throw new FormatException($"Invalid duration: {durationPart}");
 
-            if (duration < 0)
+            if (durationFrames < 0)
                 throw new FormatException("Duration cannot be negative");
 
-            var command = new MacroFormat.MacroCommand { DurationMs = duration };
+            // Convert frames to milliseconds for internal timing
+            int durationMs = durationFrames * SwitchControllerConstants.USB_FRAME_INTERVAL_MS;
+
+            var command = new MacroFormat.MacroCommand { DurationMs = durationMs };
 
             // Handle neutral state
             if (string.IsNullOrWhiteSpace(inputsPart) || MacroFormat.NeutralKeywords.Contains(inputsPart))

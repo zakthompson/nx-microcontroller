@@ -9,6 +9,7 @@ namespace SwitchController
     {
         // Timing and input settings
         public const int UPDATE_INTERVAL_MS = 1;        // 1ms = 1000Hz polling for minimum latency
+        public const int USB_FRAME_INTERVAL_MS = 8;     // 125Hz USB polling (must match firmware descriptor)
         public const bool INVERT_Y_AXIS = true;         // Nintendo-style "up is negative"
 
         // Deadzone settings (matching Switch Joy-Con behavior)

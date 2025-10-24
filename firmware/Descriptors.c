@@ -109,14 +109,14 @@ const USB_Descriptor_Configuration_t PROGMEM ConfigurationDescriptor = {
         .EndpointAddress        = JOYSTICK_IN_EPADDR,
         .Attributes             = (EP_TYPE_INTERRUPT | ENDPOINT_ATTR_NO_SYNC | ENDPOINT_USAGE_DATA),
         .EndpointSize           = JOYSTICK_EPSIZE,
-        .PollingIntervalMS      = 0x05
+        .PollingIntervalMS      = 0x08
     },
     .HID_ReportOUTEndpoint = {
         .Header                 = {.Size = sizeof(USB_Descriptor_Endpoint_t), .Type = DTYPE_Endpoint},
         .EndpointAddress        = JOYSTICK_OUT_EPADDR,
         .Attributes             = (EP_TYPE_INTERRUPT | ENDPOINT_ATTR_NO_SYNC | ENDPOINT_USAGE_DATA),
         .EndpointSize           = JOYSTICK_EPSIZE,
-        .PollingIntervalMS      = 0x05
+        .PollingIntervalMS      = 0x08
     }
 };
 

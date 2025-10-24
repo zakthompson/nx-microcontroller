@@ -95,6 +95,9 @@ namespace SwitchController
         /// </summary>
         private static string DecodePacket(byte[] packet, long durationMs)
         {
+            // Convert milliseconds back to frames for output
+            long durationFrames = durationMs / SwitchControllerConstants.USB_FRAME_INTERVAL_MS;
+
             var inputs = new List<string>();
 
             // Decode buttons
@@ -135,14 +138,14 @@ namespace SwitchController
             // Format output
             if (inputs.Count == 0)
             {
-                return $"Wait,{durationMs}";
+                return $"Wait,{durationFrames}";
             }
 
             // Sort inputs for consistent output (buttons first, then D-Pad, then sticks)
             inputs = SortInputs(inputs);
 
             string inputsStr = string.Join("+", inputs);
-            return $"{inputsStr},{durationMs}";
+            return $"{inputsStr},{durationFrames}";
         }
 
         /// <summary>

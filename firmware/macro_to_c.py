@@ -48,6 +48,8 @@ NEUTRAL_KEYWORDS = {'WAIT', 'NOTHING', 'NEUTRAL'}
 
 MAX_INCLUDE_DEPTH = 10
 
+USB_FRAME_INTERVAL_MS = 8  # 125Hz USB polling (must match firmware descriptor)
+
 
 def parse_text_macro(file_path: str, include_chain: Optional[set] = None, depth: int = 0) -> List[Dict[str, Any]]:
     """
@@ -167,14 +169,17 @@ def parse_text_macro(file_path: str, include_chain: Optional[set] = None, depth:
                 inputs_part = line[:split_pos].strip()
                 duration_part = line[split_pos+1:].strip()
 
-                # Parse duration (support hex with 0x prefix)
+                # Parse duration in frames (support hex with 0x prefix)
                 if duration_part.lower().startswith('0x'):
-                    duration = int(duration_part, 16)
+                    duration_frames = int(duration_part, 16)
                 else:
-                    duration = int(duration_part)
+                    duration_frames = int(duration_part)
 
-                if duration < 0:
+                if duration_frames < 0:
                     raise ValueError(f"Duration cannot be negative")
+
+                # Convert frames to milliseconds for internal timing
+                duration = duration_frames * USB_FRAME_INTERVAL_MS
 
                 # Build packet
                 packet = build_packet(inputs_part, prev_state, line_num)

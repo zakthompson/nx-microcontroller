@@ -169,10 +169,10 @@ void HID_Task(void)
         static uint32_t millis = 0;
         static bool startup_delay_done = false;
 
-        // Startup delay: wait ~2 seconds after USB config before starting macro
+        // Startup delay: wait ~3 seconds after USB config before starting macro
         // to give the Switch time to fully recognize the controller
         if (!startup_delay_done) {
-            if (millis < 2000) {
+            if (millis < 3000) {
                 millis += 8;
                 // Send neutral report during startup
                 memcpy(report, neutral_report, 8);
