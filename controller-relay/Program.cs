@@ -38,8 +38,8 @@ namespace SwitchController
             // Load configuration
             _config = Configuration.Load();
 
-            // Initialize macro system
-            string macroFilePath = Path.Combine(AppContext.BaseDirectory, "macro.json");
+            // Initialize macro system (using .macro text format by default)
+            string macroFilePath = Path.Combine(AppContext.BaseDirectory, "macro.macro");
             _macroSystem = new MacroSystem(macroFilePath);
             _macroSystem.Load();
 

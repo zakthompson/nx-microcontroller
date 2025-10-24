@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Convert a JSON macro file (from controller-relay) to a C header file
+Convert a macro file (JSON or text format from controller-relay) to a C header file
 that can be embedded in the firmware for standalone macro playback.
 
 Usage:
+    python3 macro_to_c.py macro.macro [--loop] > embedded_macro.h
     python3 macro_to_c.py macro.json [--loop] > embedded_macro.h
 """
 
@@ -11,35 +12,262 @@ import json
 import sys
 import argparse
 import base64
-from typing import List, Dict, Any
+import re
+from typing import List, Dict, Any, Optional, Tuple
 
 
-def json_to_c_header(json_file: str, loop_macro: bool = False) -> str:
+# Button bit masks (matching C# SwitchControllerConstants)
+BUTTONS = {
+    'Y': 1 << 0, 'B': 1 << 1, 'A': 1 << 2, 'X': 1 << 3,
+    'L': 1 << 4, 'R': 1 << 5, 'ZL': 1 << 6, 'ZR': 1 << 7,
+    'MINUS': 1 << 8, 'PLUS': 1 << 9,
+    'LCLICK': 1 << 10, 'RCLICK': 1 << 11,
+    'HOME': 1 << 12, 'CAPTURE': 1 << 13
+}
+
+# D-Pad HAT values
+DPAD = {
+    'UP': 0x00, 'UPRIGHT': 0x01, 'RIGHT': 0x02, 'DOWNRIGHT': 0x03,
+    'DOWN': 0x04, 'DOWNLEFT': 0x05, 'LEFT': 0x06, 'UPLEFT': 0x07,
+    'NEUTRAL': 0x08
+}
+
+# Stick cardinal positions
+LEFT_STICK = {
+    'LUP': (128, 255), 'LDOWN': (128, 0), 'LLEFT': (0, 128), 'LRIGHT': (255, 128),
+    'LUPLEFT': (0, 255), 'LUPRIGHT': (255, 255), 'LDOWNLEFT': (0, 0), 'LDOWNRIGHT': (255, 0)
+}
+
+RIGHT_STICK = {
+    'RUP': (128, 255), 'RDOWN': (128, 0), 'RLEFT': (0, 128), 'RRIGHT': (255, 128),
+    'RUPLEFT': (0, 255), 'RUPRIGHT': (255, 255), 'RDOWNLEFT': (0, 0), 'RDOWNRIGHT': (255, 0)
+}
+
+NEUTRAL_KEYWORDS = {'WAIT', 'NOTHING', 'NEUTRAL'}
+
+
+def parse_text_macro(file_path: str) -> List[Dict[str, Any]]:
     """
-    Convert JSON macro file to C header format.
+    Parse a human-readable text macro file into frame format.
 
     Args:
-        json_file: Path to the input JSON macro file
+        file_path: Path to the .macro text file
+
+    Returns:
+        List of frames in the same format as JSON: [{'TimestampMs': int, 'Packet': [bytes]}]
+    """
+    frames = []
+    current_timestamp = 0
+    prev_state = None
+
+    with open(file_path, 'r') as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.strip()
+
+            # Skip empty lines and comments
+            if not line or line.startswith('#') or line.startswith('//'):
+                continue
+
+            # Remove inline comments
+            if '#' in line:
+                line = line[:line.index('#')].strip()
+            if '//' in line:
+                line = line[:line.index('//')].strip()
+
+            # Parse line: inputs,duration
+            # Need to handle commas inside L(x,y) or R(x,y)
+            try:
+                # Find the last comma that's not inside parentheses
+                paren_depth = 0
+                split_pos = -1
+                for i, char in enumerate(line):
+                    if char == '(':
+                        paren_depth += 1
+                    elif char == ')':
+                        paren_depth -= 1
+                    elif char == ',' and paren_depth == 0:
+                        split_pos = i
+
+                if split_pos == -1:
+                    raise ValueError("Missing comma separator between inputs and duration")
+
+                inputs_part = line[:split_pos].strip()
+                duration_part = line[split_pos+1:].strip()
+
+                # Parse duration (support hex with 0x prefix)
+                if duration_part.lower().startswith('0x'):
+                    duration = int(duration_part, 16)
+                else:
+                    duration = int(duration_part)
+
+                if duration < 0:
+                    raise ValueError(f"Duration cannot be negative")
+
+                # Build packet
+                packet = build_packet(inputs_part, prev_state, line_num)
+
+                # Add frame
+                frames.append({
+                    'TimestampMs': current_timestamp,
+                    'Packet': list(packet)
+                })
+
+                current_timestamp += duration
+                prev_state = packet
+
+            except ValueError as e:
+                print(f"Error on line {line_num}: {e}", file=sys.stderr)
+                sys.exit(1)
+
+    # Add final neutral frame to release all inputs
+    if frames:
+        neutral_packet = [0, 0, DPAD['NEUTRAL'], 128, 128, 128, 128, 0]
+        frames.append({
+            'TimestampMs': current_timestamp,
+            'Packet': neutral_packet
+        })
+
+    return frames
+
+
+def build_packet(inputs_str: str, prev_packet: Optional[List[int]], line_num: int) -> List[int]:
+    """
+    Build an 8-byte packet from an input string.
+
+    Args:
+        inputs_str: Input string (e.g., "A+B", "LUp", "L(127,255)")
+        prev_packet: Previous packet (not used - kept for compatibility)
+        line_num: Line number for error reporting
+
+    Returns:
+        8-byte packet as list
+    """
+    # Start with neutral packet
+    # Each line specifies the complete state - no inheritance from previous commands
+    packet = [0, 0, DPAD['NEUTRAL'], 128, 128, 128, 128, 0]
+
+    # Check for neutral/wait state
+    if not inputs_str or inputs_str.upper() in NEUTRAL_KEYWORDS:
+        # Reset to neutral
+        return [0, 0, DPAD['NEUTRAL'], 128, 128, 128, 128, 0]
+
+    # Parse inputs (separated by +)
+    inputs = [inp.strip() for inp in inputs_str.split('+') if inp.strip()]
+
+    buttons = 0
+    hat = DPAD['NEUTRAL']
+    left_stick_set = False
+    right_stick_set = False
+
+    for inp in inputs:
+        inp_upper = inp.upper()
+
+        # Check for complex analog: L(x,y) or R(x,y)
+        match = re.match(r'([LR])\s*\(\s*(\d+|0x[0-9A-Fa-f]+)\s*,\s*(\d+|0x[0-9A-Fa-f]+)\s*\)', inp, re.IGNORECASE)
+        if match:
+            stick, x_str, y_str = match.groups()
+            x = int(x_str, 16 if x_str.lower().startswith('0x') else 10)
+            y = int(y_str, 16 if y_str.lower().startswith('0x') else 10)
+
+            if not (0 <= x <= 255 and 0 <= y <= 255):
+                raise ValueError(f"Stick coordinates must be 0-255: {inp}")
+
+            if stick.upper() == 'L':
+                packet[3] = x
+                packet[4] = y
+                left_stick_set = True
+            else:
+                packet[5] = x
+                packet[6] = y
+                right_stick_set = True
+            continue
+
+        # Check for button
+        if inp_upper in BUTTONS:
+            buttons |= BUTTONS[inp_upper]
+            continue
+
+        # Check for D-Pad
+        if inp_upper in DPAD:
+            hat = DPAD[inp_upper]
+            continue
+
+        # Check for left stick cardinal
+        if inp_upper in LEFT_STICK:
+            x, y = LEFT_STICK[inp_upper]
+            packet[3] = x
+            packet[4] = y
+            left_stick_set = True
+            continue
+
+        # Check for right stick cardinal
+        if inp_upper in RIGHT_STICK:
+            x, y = RIGHT_STICK[inp_upper]
+            packet[5] = x
+            packet[6] = y
+            right_stick_set = True
+            continue
+
+        raise ValueError(f"Unknown input: {inp}")
+
+    # Build final packet
+    packet[0] = (buttons >> 8) & 0xFF  # buttons_hi
+    packet[1] = buttons & 0xFF          # buttons_lo
+    packet[2] = hat
+
+    return packet
+
+
+def load_macro_file(file_path: str) -> List[Dict[str, Any]]:
+    """
+    Load a macro file, auto-detecting format (JSON or text).
+
+    Args:
+        file_path: Path to macro file
+
+    Returns:
+        List of frames in standard format
+    """
+    # Determine format by extension
+    if file_path.endswith('.macro') or file_path.endswith('.txt'):
+        return parse_text_macro(file_path)
+    elif file_path.endswith('.json'):
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    else:
+        # Try JSON first, then text
+        try:
+            with open(file_path, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return parse_text_macro(file_path)
+
+
+def json_to_c_header(macro_file: str, loop_macro: bool = False) -> str:
+    """
+    Convert macro file (JSON or text format) to C header format.
+
+    Args:
+        macro_file: Path to the input macro file (.json, .macro, or .txt)
         loop_macro: Whether to enable macro looping
 
     Returns:
         C header file content as a string
     """
 
-    with open(json_file, 'r') as f:
-        frames: List[Dict[str, Any]] = json.load(f)
+    frames: List[Dict[str, Any]] = load_macro_file(macro_file)
 
     if not frames:
-        print(f"Error: Macro file '{json_file}' contains no frames", file=sys.stderr)
+        print(f"Error: Macro file '{macro_file}' contains no frames", file=sys.stderr)
         sys.exit(1)
 
     if not isinstance(frames, list):
-        print(f"Error: Macro file '{json_file}' must contain a JSON array of frames", file=sys.stderr)
+        print(f"Error: Macro file '{macro_file}' must contain a list of frames", file=sys.stderr)
         sys.exit(1)
 
     # Generate header
     output: List[str] = []
-    output.append("// Auto-generated from macro JSON file")
+    output.append("// Auto-generated from macro file")
     output.append("// DO NOT EDIT MANUALLY")
     output.append("")
     output.append("#ifndef EMBEDDED_MACRO_H")
@@ -107,9 +335,9 @@ def json_to_c_header(json_file: str, loop_macro: bool = False) -> str:
 def main() -> None:
     """Main entry point for the macro conversion script."""
     parser = argparse.ArgumentParser(
-        description='Convert JSON macro file to C header for embedded firmware'
+        description='Convert macro file (JSON or text format) to C header for embedded firmware'
     )
-    parser.add_argument('macro_file', help='Path to macro.json file')
+    parser.add_argument('macro_file', help='Path to macro file (.macro, .json, or .txt)')
     parser.add_argument('--loop', action='store_true',
                        help='Enable macro looping (default: play once)')
     parser.add_argument('-o', '--output',

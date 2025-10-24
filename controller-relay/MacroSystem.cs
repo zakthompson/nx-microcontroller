@@ -165,7 +165,7 @@ namespace SwitchController
         }
 
         /// <summary>
-        /// Saves the recorded macro to disk
+        /// Saves the recorded macro to disk in the appropriate format
         /// </summary>
         public void Save()
         {
@@ -177,12 +177,17 @@ namespace SwitchController
                     return;
                 }
 
-                var json = JsonSerializer.Serialize(_recordedMacro, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
+                // Determine format based on file extension
+                string extension = Path.GetExtension(_macroFilePath).ToLowerInvariant();
 
-                File.WriteAllText(_macroFilePath, json);
+                if (extension == ".macro" || extension == ".txt")
+                {
+                    SaveTextFormat();
+                }
+                else
+                {
+                    SaveJsonFormat();
+                }
 
                 long durationMs = _recordedMacro[_recordedMacro.Count - 1].TimestampMs;
                 double durationSec = durationMs / 1000.0;
@@ -196,34 +201,124 @@ namespace SwitchController
         }
 
         /// <summary>
-        /// Loads a macro from disk
+        /// Saves the macro in JSON format
+        /// </summary>
+        private void SaveJsonFormat()
+        {
+            var json = JsonSerializer.Serialize(_recordedMacro, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            File.WriteAllText(_macroFilePath, json);
+        }
+
+        /// <summary>
+        /// Saves the macro in human-readable text format
+        /// </summary>
+        private void SaveTextFormat()
+        {
+            MacroWriter.WriteFile(_macroFilePath, _recordedMacro);
+        }
+
+        /// <summary>
+        /// Loads a macro from disk, auto-detecting format
         /// </summary>
         public void Load()
         {
             try
             {
-                if (!File.Exists(_macroFilePath))
+                // Try to load from the specified file path
+                if (File.Exists(_macroFilePath))
                 {
-                    Console.WriteLine("[MACRO] No saved macro found.");
+                    LoadFromFile(_macroFilePath);
                     return;
                 }
 
-                var json = File.ReadAllText(_macroFilePath);
-                var frames = JsonSerializer.Deserialize<List<MacroFrame>>(json);
+                // Try alternate formats
+                string directory = Path.GetDirectoryName(_macroFilePath) ?? ".";
+                string fileNameWithoutExt = Path.GetFileNameWithoutExtension(_macroFilePath);
 
-                if (frames != null && frames.Count > 0)
+                // Try .macro format
+                string macroPath = Path.Combine(directory, fileNameWithoutExt + ".macro");
+                if (File.Exists(macroPath))
                 {
-                    _recordedMacro = frames;
-                    long durationMs = _recordedMacro[_recordedMacro.Count - 1].TimestampMs;
-                    double durationSec = durationMs / 1000.0;
-                    Console.WriteLine($"[MACRO] Loaded {_recordedMacro.Count} frames from {Path.GetFileName(_macroFilePath)}");
-                    Console.WriteLine($"[MACRO] Duration: {durationSec:F2}s");
-                    Console.WriteLine("[MACRO] Press L3 + X to play once, L3 + Y to loop");
+                    LoadFromFile(macroPath);
+                    return;
                 }
+
+                // Try .json format
+                string jsonPath = Path.Combine(directory, fileNameWithoutExt + ".json");
+                if (File.Exists(jsonPath))
+                {
+                    LoadFromFile(jsonPath);
+                    return;
+                }
+
+                Console.WriteLine("[MACRO] No saved macro found.");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[MACRO] Error loading macro: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Loads a macro from a specific file
+        /// </summary>
+        private void LoadFromFile(string filePath)
+        {
+            string extension = Path.GetExtension(filePath).ToLowerInvariant();
+
+            List<MacroFrame>? frames = null;
+
+            if (extension == ".macro" || extension == ".txt")
+            {
+                // Try text format first
+                try
+                {
+                    frames = MacroParser.ParseFile(filePath);
+                }
+                catch (MacroParseException ex)
+                {
+                    Console.WriteLine($"[MACRO] Parse error in {Path.GetFileName(filePath)}:");
+                    Console.WriteLine($"[MACRO]   {ex.Message}");
+                    return;
+                }
+            }
+            else
+            {
+                // Try JSON format
+                try
+                {
+                    var json = File.ReadAllText(filePath);
+                    frames = JsonSerializer.Deserialize<List<MacroFrame>>(json);
+                }
+                catch
+                {
+                    // If JSON fails and the file looks like text, try text format
+                    try
+                    {
+                        frames = MacroParser.ParseFile(filePath);
+                    }
+                    catch
+                    {
+                        throw; // Re-throw original JSON error
+                    }
+                }
+            }
+
+            if (frames != null && frames.Count > 0)
+            {
+                _recordedMacro = frames;
+                long durationMs = _recordedMacro[_recordedMacro.Count - 1].TimestampMs;
+                double durationSec = durationMs / 1000.0;
+                Console.WriteLine($"[MACRO] Loaded {_recordedMacro.Count} frames from {Path.GetFileName(filePath)}");
+                Console.WriteLine($"[MACRO] Duration: {durationSec:F2}s");
+                Console.WriteLine("[MACRO] Press L3 + X to play once, L3 + Y to loop");
+            }
+            else
+            {
+                Console.WriteLine($"[MACRO] No frames found in {Path.GetFileName(filePath)}");
             }
         }
     }
