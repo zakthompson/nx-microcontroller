@@ -4,7 +4,7 @@
 
 Use a microcontroller (Arduino Uno R3, Teensy 2.0++, etc.) as a Nintendo Switch controller. Stream your Switch gameplay remotely, record and playback macros, or build standalone automation bots.
 
-https://github.com/user-attachments/assets/88109253-7654-4843-86a0-fe9323f4a297
+https://github.com/user-attachments/assets/12d42620-9a44-4d1f-9b6e-9e876d126d2a
 
 ^ _Playing my **real Switch** remotely on a Retroid Pocket 5 via streaming._
 
