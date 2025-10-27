@@ -4,6 +4,10 @@
 
 Use a microcontroller (Arduino Uno R3, Teensy 2.0++, etc.) as a Nintendo Switch controller. Stream your Switch gameplay remotely, record and playback macros, or build standalone automation bots.
 
+https://github.com/user-attachments/assets/88109253-7654-4843-86a0-fe9323f4a297
+
+^ _Playing my **real Switch** remotely on a Retroid Pocket 5 via streaming._
+
 ## Overview
 
 This project provides two complementary tools for controlling a Nintendo Switch using LUFA-compatible microcontrollers:
