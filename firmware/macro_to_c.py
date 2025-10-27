@@ -104,7 +104,26 @@ def parse_text_macro(file_path: str, include_chain: Optional[set] = None, depth:
 
             # Handle include directive
             if line.startswith('@'):
-                include_path = line[1:].strip()
+                include_directive = line[1:].strip()
+                include_path = include_directive
+                loop_count = 1
+
+                # Parse loop count if specified: @path.macro, *5 (allowing spaces)
+                if '*' in include_directive:
+                    # Use regex to split on comma followed by optional spaces and asterisk
+                    parts = re.split(r',\s*\*', include_directive)
+                    if len(parts) == 2:
+                        include_path = parts[0].strip()
+                        try:
+                            loop_count = int(parts[1].strip())
+                            if loop_count < 1:
+                                raise ValueError("Loop count must be positive")
+                        except ValueError as e:
+                            print(f"Error on line {line_num}: Invalid loop count '{parts[1]}': {e}", file=sys.stderr)
+                            sys.exit(1)
+                    else:
+                        print(f"Error on line {line_num}: Invalid include directive format", file=sys.stderr)
+                        sys.exit(1)
 
                 try:
                     # Resolve path relative to base directory
@@ -121,25 +140,24 @@ def parse_text_macro(file_path: str, include_chain: Optional[set] = None, depth:
                     # Recursively parse included file
                     included_frames = parse_text_macro(full_include_path, include_chain, depth + 1)
 
-                    # Merge included frames into current frames, adjusting timestamps
-                    for included_frame in included_frames:
-                        # Skip the final neutral frame from included file
-                        if included_frame == included_frames[-1]:
-                            continue
+                    # Merge included frames into current frames, repeating loop_count times
+                    for loop in range(loop_count):
+                        # Merge included frames into current frames, adjusting timestamps
+                        for included_frame in included_frames:
+                            # Skip the final neutral frame from included file (except on last loop)
+                            if included_frame == included_frames[-1] and loop < loop_count - 1:
+                                continue
 
-                        # Adjust timestamp to be relative to current position
-                        adjusted_timestamp = current_timestamp + included_frame['TimestampMs']
-                        frames.append({
-                            'TimestampMs': adjusted_timestamp,
-                            'Packet': included_frame['Packet']
-                        })
+                            # Adjust timestamp to be relative to current position
+                            adjusted_timestamp = current_timestamp + included_frame['TimestampMs']
+                            frames.append({
+                                'TimestampMs': adjusted_timestamp,
+                                'Packet': included_frame['Packet']
+                            })
 
-                    # Update current timestamp based on the last included frame's timestamp
-                    if len(included_frames) > 1:
-                        # Get the duration from the included macro (last timestamp before neutral frame)
-                        last_included_timestamp = included_frames[-2]['TimestampMs'] if len(included_frames) > 1 else 0
-                        # Calculate duration from last included frame
-                        if len(included_frames) > 1:
+                        # Update current timestamp based on the included macro duration
+                        if included_frames:
+                            # Get the duration from the included macro (last timestamp)
                             included_duration = included_frames[-1]['TimestampMs']
                             current_timestamp += included_duration
 

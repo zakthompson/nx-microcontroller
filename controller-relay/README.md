@@ -194,7 +194,8 @@ See the [firmware README](../firmware/README.md) for detailed instructions on bu
 - **Baud Rate**: 1,000,000 bps (1 Mbps)
 - **Packet Rate**: 125 Hz (one packet every 8ms, matching USB polling rate)
 - **Packet Format**: 8-byte controller state packets
-- **Macro Format**: Human-readable text format (`.macro` files)
+- **Macro Format**: Human-readable text format (`.macro` files) with include support and loop syntax
+- **Macro Includes**: Support for `@filename.macro,*N` to include and repeat macros N times
 
 ## See Also
 
