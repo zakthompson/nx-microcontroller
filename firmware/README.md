@@ -244,21 +244,51 @@ A,10
 Wait,20
 ```
 
+**Loop Count Syntax:**
+
+You can specify how many times to repeat an included macro:
+
+```
+@macro_to_repeat.macro,*5    # Repeat 5 times
+@farming_action.macro,*10    # Repeat 10 times
+@movement.macro, *3          # Spaces after comma are allowed
+```
+
 **Include Rules:**
 
 - Paths are relative to the current macro file
 - Absolute paths are supported
 - Circular includes are detected and prevented
 - Maximum include depth: 10 levels
+- Loop counts must be positive integers (1 or greater)
+- Syntax: `@filename.macro,*N` where N is the repeat count
+- Spaces after the comma are allowed: `@file.macro, *5`
 
 **Example:**
 
 ```
 # main.macro
 @macros/startup.macro
-@macros/farming_loop.macro
+@macros/farming_loop.macro,*5    # Repeat farming 5 times
 @macros/cleanup.macro
 ```
+
+**Complete Looping Example:**
+
+```
+# farming_bot.macro - Main farming sequence
+
+# Start by going to the farming spot
+@navigation/go_to_spot.macro
+
+# Repeat the farming action 10 times using loop syntax
+@actions/collect_item.macro,*10
+
+# Return to base
+@navigation/return_to_base.macro
+```
+
+This is much cleaner than repeating the same include 10 times manually!
 
 ### Complete Example
 
@@ -292,20 +322,32 @@ Wait,20
 # Start by going to the farming spot
 @navigation/go_to_spot.macro
 
-# Repeat the farming action 10 times
-@actions/collect_item.macro
-@actions/collect_item.macro
-@actions/collect_item.macro
-@actions/collect_item.macro
-@actions/collect_item.macro
-@actions/collect_item.macro
-@actions/collect_item.macro
-@actions/collect_item.macro
-@actions/collect_item.macro
-@actions/collect_item.macro
+# Repeat the farming action 10 times (much cleaner with loop syntax!)
+@actions/collect_item.macro,*10
 
 # Return to base
 @navigation/return_to_base.macro
+```
+
+**Old way (without looping):**
+```
+# This works but is repetitive and hard to maintain
+@actions/collect_item.macro
+@actions/collect_item.macro
+@actions/collect_item.macro
+@actions/collect_item.macro
+@actions/collect_item.macro
+@actions/collect_item.macro
+@actions/collect_item.macro
+@actions/collect_item.macro
+@actions/collect_item.macro
+@actions/collect_item.macro
+```
+
+**New way (with looping):**
+```
+# Much cleaner and easier to modify!
+@actions/collect_item.macro,*10
 ```
 
 ## Configuration

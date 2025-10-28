@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.IO;
 using System.Linq;
 
@@ -69,7 +70,32 @@ namespace SwitchController
                 // Handle include directive
                 if (line.StartsWith("@"))
                 {
-                    string includePath = line.Substring(1).Trim();
+                    // macro includes may include optional loop count
+                    string includeDirective = line.Substring(1).Trim();
+                    string includePath;
+                    int loopCount = 1;
+
+                    if (includeDirective.Contains("*"))
+                    {
+                        string[] parts = Regex.Split(includeDirective, @",\s*\*");
+                        includePath = parts[0].Trim();
+
+                        if parts.Length != 2)
+                        {
+                            throw new MacroParseException($"Invalid include directive format: {includeDirective}", source, lineNumber);
+                        }
+
+                        // Parse loop count to variable loopCount
+                        if (!int.TryParse(parts[1].Trim(), out loopCount) || loopCount < 1)
+                        {
+                            throw new MacroParseException($"Invalid loop count in include directive: {parts[1]}", source, lineNumber);
+                        }
+                    }
+                    else
+                    {
+                        includePath = includeDirective;
+                    }
+
 
                     try
                     {
@@ -102,6 +128,28 @@ namespace SwitchController
                         // Recursively parse included file
                         var includedFrames = ParseLines(includedLines, fullIncludePath, includeBaseDirectory, newIncludeChain, depth + 1);
 
+                        // Extract commands from included frames and repeat them loopCount times
+                        for (int loop = 0; loop < loopCount; loop++)
+                        {
+                            foreach (var frame in includedFrames)
+                            {
+                                // Skip the final neutral frame that ParseLines adds
+                                if (frame == includedFrames[^1])
+                                    continue;
+
+                                // Calculate duration for this frame
+                                int frameIndex = includedFrames.IndexOf(frame);
+                                long duration = (frameIndex < includedFrames.Count - 1)
+                                    ? includedFrames[frameIndex + 1].TimestampMs - frame.TimestampMs
+                                    : 0;
+
+                                if (duration > 0)
+                                {
+                                    var command = FrameToCommand(frame.Packet, (int)duration);
+                                    commands.Add((command, lineNumber));  // Use include line number for error tracking
+                                }
+                            }
+                        }
                         // Extract commands from included frames (we'll regenerate frames later with proper timing)
                         // For now, we need to extract the commands from the included frames
                         // This is a bit tricky - we'll convert frames back to commands
