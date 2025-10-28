@@ -80,7 +80,7 @@ namespace SwitchController
                         string[] parts = Regex.Split(includeDirective, @",\s*\*");
                         includePath = parts[0].Trim();
 
-                        if parts.Length != 2)
+                        if (parts.Length != 2)
                         {
                             throw new MacroParseException($"Invalid include directive format: {includeDirective}", source, lineNumber);
                         }
