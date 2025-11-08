@@ -12,6 +12,19 @@ export default [
       parser: tsParser,
       ecmaVersion: 'latest',
       sourceType: 'module',
+      globals: {
+        // Browser globals
+        window: 'readonly',
+        document: 'readonly',
+        localStorage: 'readonly',
+        fetch: 'readonly',
+        alert: 'readonly',
+        confirm: 'readonly',
+        console: 'readonly',
+        // Node globals for API routes
+        process: 'readonly',
+        Response: 'readonly',
+      },
       parserOptions: {
         ecmaFeatures: {
           jsx: true,
