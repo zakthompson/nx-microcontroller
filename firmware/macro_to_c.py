@@ -35,13 +35,13 @@ DPAD = {
 
 # Stick cardinal positions
 LEFT_STICK = {
-    'LUP': (128, 255), 'LDOWN': (128, 0), 'LLEFT': (0, 128), 'LRIGHT': (255, 128),
-    'LUPLEFT': (0, 255), 'LUPRIGHT': (255, 255), 'LDOWNLEFT': (0, 0), 'LDOWNRIGHT': (255, 0)
+    'LUP': (128, 0), 'LDOWN': (128, 255), 'LLEFT': (0, 128), 'LRIGHT': (255, 128),
+    'LUPLEFT': (0, 0), 'LUPRIGHT': (255, 0), 'LDOWNLEFT': (0, 255), 'LDOWNRIGHT': (255, 255)
 }
 
 RIGHT_STICK = {
-    'RUP': (128, 255), 'RDOWN': (128, 0), 'RLEFT': (0, 128), 'RRIGHT': (255, 128),
-    'RUPLEFT': (0, 255), 'RUPRIGHT': (255, 255), 'RDOWNLEFT': (0, 0), 'RDOWNRIGHT': (255, 0)
+    'RUP': (128, 0), 'RDOWN': (128, 255), 'RLEFT': (0, 128), 'RRIGHT': (255, 128),
+    'RUPLEFT': (0, 0), 'RUPRIGHT': (255, 0), 'RDOWNLEFT': (0, 255), 'RDOWNRIGHT': (255, 255)
 }
 
 NEUTRAL_KEYWORDS = {'WAIT', 'NOTHING', 'NEUTRAL'}

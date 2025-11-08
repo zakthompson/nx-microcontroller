@@ -69,14 +69,14 @@ namespace SwitchController
         /// </summary>
         public static readonly Dictionary<string, (byte X, byte Y)> LeftStickMap = new Dictionary<string, (byte, byte)>(StringComparer.OrdinalIgnoreCase)
         {
-            { "LUp", (128, 255) },
-            { "LDown", (128, 0) },
+            { "LUp", (128, 0) },
+            { "LDown", (128, 255) },
             { "LLeft", (0, 128) },
             { "LRight", (255, 128) },
-            { "LUpLeft", (0, 255) },
-            { "LUpRight", (255, 255) },
-            { "LDownLeft", (0, 0) },
-            { "LDownRight", (255, 0) }
+            { "LUpLeft", (0, 0) },
+            { "LUpRight", (255, 0) },
+            { "LDownLeft", (0, 255) },
+            { "LDownRight", (255, 255) }
         };
 
         /// <summary>
@@ -84,14 +84,14 @@ namespace SwitchController
         /// </summary>
         public static readonly Dictionary<string, (byte X, byte Y)> RightStickMap = new Dictionary<string, (byte, byte)>(StringComparer.OrdinalIgnoreCase)
         {
-            { "RUp", (128, 255) },
-            { "RDown", (128, 0) },
+            { "RUp", (128, 0) },
+            { "RDown", (128, 255) },
             { "RLeft", (0, 128) },
             { "RRight", (255, 128) },
-            { "RUpLeft", (0, 255) },
-            { "RUpRight", (255, 255) },
-            { "RDownLeft", (0, 0) },
-            { "RDownRight", (255, 0) }
+            { "RUpLeft", (0, 0) },
+            { "RUpRight", (255, 0) },
+            { "RDownLeft", (0, 255) },
+            { "RDownRight", (255, 255) }
         };
 
         /// <summary>
