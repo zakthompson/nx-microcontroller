@@ -126,11 +126,11 @@ flash-standalone:
 		echo "Error: JoystickStandalone.hex not found. Run 'make standalone MACRO=...' first"; \
 		exit 1; \
 	fi
-	sudo dfu-programmer $(MCU) erase
+	-sudo dfu-programmer $(MCU) erase
 	sudo dfu-programmer $(MCU) flash JoystickStandalone.hex
 	sudo dfu-programmer $(MCU) reset
 
 flash: all
-	sudo dfu-programmer $(MCU) erase
+	-sudo dfu-programmer $(MCU) erase
 	sudo dfu-programmer $(MCU) flash $(TARGET).hex
 	sudo dfu-programmer $(MCU) reset

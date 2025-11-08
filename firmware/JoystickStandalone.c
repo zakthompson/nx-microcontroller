@@ -110,6 +110,15 @@ static const uint8_t neutral_report[8] = {
     0x00         // Vendor-specific
 };
 
+// B button press report (to activate controller on Switch)
+static const uint8_t b_button_report[8] = {
+    0x02, 0x00,  // Buttons: B pressed (bit 1 in low byte)
+    0x08,        // Hat: centered
+    0x80, 0x80,  // Left stick: centered
+    0x80, 0x80,  // Right stick: centered
+    0x00         // Vendor-specific
+};
+
 // -----------------------------
 // Hardware setup
 // -----------------------------
@@ -168,11 +177,12 @@ void HID_Task(void)
         // Track elapsed time (USB endpoint polls at ~125Hz = every 8ms)
         static uint32_t millis = 0;
         static bool startup_delay_done = false;
+        static bool input_priming_done = false;
 
-        // Startup delay: wait ~3 seconds after USB config before starting macro
+        // Startup delay: wait ~1 second after USB config before starting macro
         // to give the Switch time to fully recognize the controller
         if (!startup_delay_done) {
-            if (millis < 3000) {
+            if (millis < 1000) {
                 millis += 8;
                 // Send neutral report during startup
                 memcpy(report, neutral_report, 8);
@@ -181,6 +191,26 @@ void HID_Task(void)
                 return;
             }
             startup_delay_done = true;
+            millis = 0;  // Reset millis for input priming
+        }
+
+        // Input priming: press and release B button to activate the controller
+        // The Switch needs an actual button press before it properly processes inputs
+        if (!input_priming_done) {
+            if (millis < 80) {  // Press B for ~10 frames (80ms)
+                millis += 8;
+                memcpy(report, b_button_report, 8);
+                Endpoint_Write_Stream_LE(report, sizeof(report), NULL);
+                Endpoint_ClearIN();
+                return;
+            } else if (millis < 160) {  // Release B for ~10 frames (80ms)
+                millis += 8;
+                memcpy(report, neutral_report, 8);
+                Endpoint_Write_Stream_LE(report, sizeof(report), NULL);
+                Endpoint_ClearIN();
+                return;
+            }
+            input_priming_done = true;
             millis = 0;  // Reset millis for macro playback
         }
 
