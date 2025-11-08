@@ -12,7 +12,8 @@
 **/controller-relay/bin
 **/controller-relay/obj
 
-**/firmware/LUFA
+# NOTE: We need LUFA for firmware compilation, so don't exclude it!
+# **/firmware/LUFA
 
 # flyctl launch added from firmware/.gitignore
 firmware/cmake-build-debug

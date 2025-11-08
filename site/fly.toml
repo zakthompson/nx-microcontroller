@@ -2,6 +2,8 @@
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
+# IMPORTANT: Deploy from the repository root, not from the site/ directory:
+#   cd /path/to/nx-microcontroller && fly deploy --config site/fly.toml
 
 app = 'nx-controller'
 primary_region = 'yyz'
