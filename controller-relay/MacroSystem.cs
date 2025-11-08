@@ -191,7 +191,7 @@ namespace SwitchController
 
                 long durationMs = _recordedMacro[_recordedMacro.Count - 1].TimestampMs;
                 double durationSec = durationMs / 1000.0;
-                Console.WriteLine($"[MACRO] Saved {_recordedMacro.Count} frames to {Path.GetFileName(_macroFilePath)}");
+                Console.WriteLine($"[MACRO] Saved {_recordedMacro.Count} frames to {_macroFilePath}");
                 Console.WriteLine($"[MACRO] Duration: {durationSec:F2}s");
             }
             catch (Exception ex)

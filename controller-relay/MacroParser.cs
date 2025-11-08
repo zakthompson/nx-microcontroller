@@ -252,12 +252,31 @@ namespace SwitchController
             line = line.Trim();
 
             // Split by comma: inputs,duration
-            string[] parts = line.Split(',');
-            if (parts.Length != 2)
+            // But be careful not to split commas inside parentheses (e.g., R(128,95),10)
+            string inputsPart;
+            string durationPart;
+
+            // Find the last comma that's not inside parentheses
+            int lastCommaIndex = -1;
+            int parenDepth = 0;
+            for (int i = line.Length - 1; i >= 0; i--)
+            {
+                if (line[i] == ')')
+                    parenDepth++;
+                else if (line[i] == '(')
+                    parenDepth--;
+                else if (line[i] == ',' && parenDepth == 0)
+                {
+                    lastCommaIndex = i;
+                    break;
+                }
+            }
+
+            if (lastCommaIndex == -1)
                 throw new FormatException("Line must be in format: inputs,duration");
 
-            string inputsPart = parts[0].Trim();
-            string durationPart = parts[1].Trim();
+            inputsPart = line.Substring(0, lastCommaIndex).Trim();
+            durationPart = line.Substring(lastCommaIndex + 1).Trim();
 
             // Parse duration (in frames)
             if (!MacroFormat.TryParseInt(durationPart, out int durationFrames))
