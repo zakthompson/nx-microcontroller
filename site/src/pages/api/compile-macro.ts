@@ -77,8 +77,12 @@ export const POST: APIRoute = async ({ request }) => {
     const macroPath = join(tempDir, 'macro.macro');
     await writeFile(macroPath, resolvedMacro, 'utf-8');
 
-    // Get firmware directory (relative to project root)
-    const firmwareDir = join(process.cwd(), '..', 'firmware');
+    // Get firmware directory
+    // In development: process.cwd() is /path/to/site, so we go up one level
+    // In production (Docker): process.cwd() is /app, and firmware is at /app/firmware
+    const firmwareDir = process.env.NODE_ENV === 'production'
+      ? join(process.cwd(), 'firmware')
+      : join(process.cwd(), '..', 'firmware');
 
     // Run macro_to_c.py to validate and convert
     const pythonCmd = `python3 "${join(firmwareDir, 'macro_to_c.py')}" "${macroPath}" ${loop ? '--loop' : ''} -o "${join(tempDir, 'embedded_macro.h')}"`;

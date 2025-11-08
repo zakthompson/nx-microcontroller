@@ -1,15 +1,13 @@
-# fly.toml app configuration file generated for nx-controller
+# fly.toml app configuration file generated for nx-controller on 2025-11-08T03:24:33-05:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
-# IMPORTANT: Deploy from the repository root, not from the site/ directory:
-#   cd /path/to/nx-microcontroller && fly deploy --config site/fly.toml --dockerfile site/Dockerfile
 
 app = 'nx-controller'
-primary_region = 'ord'
+primary_region = 'yyz'
 
 [build]
-  dockerfile = 'site/Dockerfile'
+  dockerfile = 'Dockerfile'
 
 [http_service]
   internal_port = 3000
