@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import GameCard from '../components/GameCard';
 ---
 
 <html lang="en">
@@ -8,9 +9,60 @@ import '../styles/global.css';
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
-    <title>NX Controller</title>
+    <title>NX Controller - Nintendo Switch Macro Tool</title>
   </head>
-  <body class="flex min-h-screen items-center justify-center bg-gray-900">
-    <h1 class="text-5xl font-bold text-white">NX Controller</h1>
+  <body
+    class="min-h-screen bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900"
+  >
+    <div class="container mx-auto px-4 py-12">
+      <!-- Hero Section -->
+      <header class="mb-16 text-center">
+        <h1 class="mb-4 text-6xl font-bold text-white drop-shadow-lg">
+          NX Controller
+        </h1>
+        <p class="text-xl text-gray-300">
+          Download pre-built macros for your favorite Pokémon games or create
+          your own
+        </p>
+      </header>
+
+      <!-- Game Grid -->
+      <main class="mx-auto max-w-6xl">
+        <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          <GameCard
+            title="Pokémon Sword & Shield"
+            href="/games/sword-shield"
+            gradient="bg-gradient-to-br from-cyan-500 to-blue-700"
+            client:load
+          />
+          <GameCard
+            title="Pokémon Brilliant Diamond & Shining Pearl"
+            href="/games/bdsp"
+            gradient="bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-600"
+            client:load
+          />
+          <GameCard
+            title="Pokémon Legends: Arceus"
+            href="/games/legends-arceus"
+            gradient="bg-gradient-to-br from-amber-500 to-orange-700"
+            client:load
+          />
+          <GameCard
+            title="Pokémon Legends: Z-A"
+            href="/games/legends-za"
+            gradient="bg-gradient-to-br from-emerald-500 to-teal-700"
+            client:load
+          />
+          <GameCard
+            title="Customize Macro"
+            subtitle="Build your own"
+            href="/customize"
+            gradient="bg-gradient-to-br from-gray-600 to-gray-800"
+            showIcon={true}
+            client:load
+          />
+        </div>
+      </main>
+    </div>
   </body>
 </html>
