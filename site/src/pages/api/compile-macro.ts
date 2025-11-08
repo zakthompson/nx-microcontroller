@@ -80,12 +80,23 @@ export const POST: APIRoute = async ({ request }) => {
     // Get firmware directory
     // In development: process.cwd() is /path/to/site, so we go up one level
     // In production (Docker): process.cwd() is /app, and firmware is at /app/firmware
-    const firmwareDir = process.env.NODE_ENV === 'production'
+    // Check if we're in Docker by looking for /app directory
+    const isDocker = process.cwd() === '/app';
+    const firmwareDir = isDocker
       ? join(process.cwd(), 'firmware')
       : join(process.cwd(), '..', 'firmware');
 
+    // Debug logging
+    console.log('Environment:', process.env.NODE_ENV);
+    console.log('process.cwd():', process.cwd());
+    console.log('isDocker:', isDocker);
+    console.log('firmwareDir:', firmwareDir);
+    console.log('macro_to_c.py path:', join(firmwareDir, 'macro_to_c.py'));
+
     // Run macro_to_c.py to validate and convert
     const pythonCmd = `python3 "${join(firmwareDir, 'macro_to_c.py')}" "${macroPath}" ${loop ? '--loop' : ''} -o "${join(tempDir, 'embedded_macro.h')}"`;
+
+    console.log('Python command:', pythonCmd);
 
     try {
       await execAsync(pythonCmd);
