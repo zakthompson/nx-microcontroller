@@ -1,9 +1,11 @@
 interface GameCardProps {
   title: string;
   subtitle?: string;
-  href: string;
+  href?: string;
   gradient: string;
   showIcon?: boolean;
+  coverArt?: string;
+  comingSoon?: boolean;
 }
 
 export default function GameCard({
@@ -12,17 +14,30 @@ export default function GameCard({
   href,
   gradient,
   showIcon,
+  coverArt,
+  comingSoon = false,
 }: GameCardProps) {
+  const CardWrapper = href && !comingSoon ? 'a' : 'div';
+  const cardProps = href && !comingSoon ? { href } : {};
+
   return (
-    <a
-      href={href}
-      className="group relative overflow-hidden rounded-xl shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-2xl"
+    <CardWrapper
+      {...cardProps}
+      className={`group relative ${comingSoon ? 'cursor-default' : ''}`}
     >
       <div
-        className={`aspect-[3/4] ${gradient} flex flex-col items-center justify-center p-6 text-white`}
+        className={`relative aspect-[3/4] overflow-hidden rounded-xl shadow-lg ${!comingSoon ? 'transition-all duration-300 hover:scale-105 hover:shadow-2xl' : ''}`}
       >
-        {showIcon && (
-          <div className="mb-4">
+        <div
+          className={`aspect-[3/4] ${gradient} flex items-center justify-center p-6 text-white`}
+        >
+          {coverArt ? (
+            <img
+              src={coverArt}
+              alt={title}
+              className="h-full w-full object-cover"
+            />
+          ) : showIcon ? (
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
@@ -42,18 +57,30 @@ export default function GameCard({
                 d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
               />
             </svg>
+          ) : null}
+        </div>
+
+        {comingSoon && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <span className="text-3xl font-bold text-white drop-shadow-lg">
+              Coming Soon
+            </span>
           </div>
         )}
-        <h3 className="text-center text-2xl font-bold drop-shadow-lg">
+
+        {!comingSoon && (
+          <div className="absolute inset-0 bg-black opacity-0 transition-opacity duration-300 group-hover:opacity-10" />
+        )}
+      </div>
+
+      <div className="mt-3 text-center">
+        <h3 className="text-xl font-bold text-white drop-shadow-lg">
           {title}
         </h3>
         {subtitle && (
-          <p className="mt-2 text-center text-sm opacity-90 drop-shadow">
-            {subtitle}
-          </p>
+          <p className="mt-1 text-sm text-gray-400 drop-shadow">{subtitle}</p>
         )}
       </div>
-      <div className="absolute inset-0 bg-black opacity-0 transition-opacity duration-300 group-hover:opacity-10" />
-    </a>
+    </CardWrapper>
   );
 }
