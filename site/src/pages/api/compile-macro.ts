@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { writeFile, readFile, mkdir, rm } from 'fs/promises';
+import { writeFile, readFile, mkdir, rm, cp } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
@@ -17,7 +17,7 @@ interface CompileRequest {
 }
 
 export const POST: APIRoute = async ({ request }) => {
-  let tempDir: string | null = null;
+  let tempBuildDir: string | null = null;
 
   try {
     const body: CompileRequest = await request.json();
@@ -39,10 +39,20 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    // Create temporary directory
+    // Get source firmware directory
+    const isDocker = process.cwd() === '/app';
+    const sourceFirmwareDir = isDocker
+      ? join(process.cwd(), 'firmware')
+      : join(process.cwd(), '..', 'firmware');
+
+    // Create isolated temporary build directory for this request
     const tempId = randomBytes(16).toString('hex');
-    tempDir = join(tmpdir(), `nx-controller-${tempId}`);
-    await mkdir(tempDir, { recursive: true });
+    tempBuildDir = join(tmpdir(), `nx-controller-build-${tempId}`);
+    await mkdir(tempBuildDir, { recursive: true });
+
+    // Create macros subdirectory for included macros
+    const macrosDir = join(tempBuildDir, 'macros');
+    await mkdir(macrosDir, { recursive: true });
 
     // Resolve includes by replacing @macroname with actual macro content
     let resolvedMacro = macroText;
@@ -62,8 +72,8 @@ export const POST: APIRoute = async ({ request }) => {
         );
       }
 
-      // Save included macro to temp file
-      const includePath = join(tempDir, `${includeName}.macro`);
+      // Save included macro to macros subdirectory
+      const includePath = join(macrosDir, `${includeName}.macro`);
       await writeFile(includePath, includedMacro, 'utf-8');
 
       // Replace the reference with relative path
@@ -74,27 +84,51 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     // Write main macro file
-    const macroPath = join(tempDir, 'macro.macro');
+    const macroPath = join(tempBuildDir, 'macro.macro');
     await writeFile(macroPath, resolvedMacro, 'utf-8');
 
-    // Get firmware directory
-    // In development: process.cwd() is /path/to/site, so we go up one level
-    // In production (Docker): process.cwd() is /app, and firmware is at /app/firmware
-    // Check if we're in Docker by looking for /app directory
-    const isDocker = process.cwd() === '/app';
-    const firmwareDir = isDocker
-      ? join(process.cwd(), 'firmware')
-      : join(process.cwd(), '..', 'firmware');
+    // Copy all necessary firmware files to isolated build directory
+    console.log('Copying firmware files to isolated build directory...');
+    const filesToCopy = [
+      'Makefile',
+      'macro_to_c.py',
+      'JoystickStandalone.c',
+      'Joystick.c',
+      'Joystick.h',
+      'Descriptors.c',
+      'Descriptors.h',
+      'EmulatedSPI.c',
+      'EmulatedSPI.h',
+      'Response.c',
+      'Response.h',
+      'avr.h',
+      'datatypes.h',
+    ];
 
-    // Debug logging
-    console.log('Environment:', process.env.NODE_ENV);
-    console.log('process.cwd():', process.cwd());
-    console.log('isDocker:', isDocker);
-    console.log('firmwareDir:', firmwareDir);
-    console.log('macro_to_c.py path:', join(firmwareDir, 'macro_to_c.py'));
+    for (const file of filesToCopy) {
+      await cp(
+        join(sourceFirmwareDir, file),
+        join(tempBuildDir, file),
+        { recursive: false }
+      );
+    }
+
+    // Copy LUFA and Config directories recursively
+    await cp(
+      join(sourceFirmwareDir, 'LUFA'),
+      join(tempBuildDir, 'LUFA'),
+      { recursive: true }
+    );
+    await cp(
+      join(sourceFirmwareDir, 'Config'),
+      join(tempBuildDir, 'Config'),
+      { recursive: true }
+    );
+
+    console.log('Firmware files copied successfully');
 
     // Run macro_to_c.py to validate and convert
-    const pythonCmd = `python3 "${join(firmwareDir, 'macro_to_c.py')}" "${macroPath}" ${loop ? '--loop' : ''} -o "${join(tempDir, 'embedded_macro.h')}"`;
+    const pythonCmd = `python3 "${join(tempBuildDir, 'macro_to_c.py')}" "${macroPath}" ${loop ? '--loop' : ''} -o "${join(tempBuildDir, 'embedded_macro.h')}"`;
 
     console.log('Python command:', pythonCmd);
 
@@ -135,27 +169,15 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    // Copy embedded_macro.h to firmware directory
-    // Add the EMBEDDED_MACRO_ENABLED define at the top of the file
-    const embeddedMacroContent = await readFile(
-      join(tempDir, 'embedded_macro.h'),
-      'utf-8'
-    );
-    const contentWithDefine = `#ifndef EMBEDDED_MACRO_ENABLED
-#define EMBEDDED_MACRO_ENABLED 1
-#endif
+    // Build standalone firmware in isolated directory
+    // Set BOARD parameter based on MCU for proper LED configuration
+    const board = mcu === 'atmega16u2' ? 'UNO' : 'NONE';
 
-${embeddedMacroContent}`;
-    await writeFile(
-      join(firmwareDir, 'embedded_macro.h'),
-      contentWithDefine,
-      'utf-8'
-    );
+    // Pass CC_FLAGS with EMBEDDED_MACRO_ENABLED as a compiler flag
+    // This is required because JoystickStandalone.c checks #ifdef EMBEDDED_MACRO_ENABLED before including embedded_macro.h
+    const makeCmd = `make -C "${tempBuildDir}" TARGET=JoystickStandalone MCU=${mcu} BOARD=${board} CC_FLAGS="-DUSE_LUFA_CONFIG_HEADER -IConfig/ -DEMBEDDED_MACRO_ENABLED=1" all`;
 
-    // Build standalone firmware
-    // We build the JoystickStandalone target directly since we already generated embedded_macro.h
-    // Don't override CC_FLAGS - let the Makefile use its existing flags for LUFA compatibility
-    const makeCmd = `make -C "${firmwareDir}" TARGET=JoystickStandalone MCU=${mcu} all`;
+    console.log('Build command:', makeCmd);
 
     try {
       await execAsync(makeCmd);
@@ -172,7 +194,7 @@ ${embeddedMacroContent}`;
 
       // Log full output for debugging (server-side only)
       console.error('Build failed. Full output:', buildOutput);
-      console.error('Firmware dir:', firmwareDir);
+      console.error('Build dir:', tempBuildDir);
       console.error('Command:', makeCmd);
 
       // Split into lines and look for meaningful error context
@@ -238,16 +260,9 @@ ${embeddedMacroContent}`;
       );
     }
 
-    // Read the compiled hex file
-    const hexPath = join(firmwareDir, 'JoystickStandalone.hex');
+    // Read the compiled hex file from isolated build directory
+    const hexPath = join(tempBuildDir, 'JoystickStandalone.hex');
     const hexContent = await readFile(hexPath, 'utf-8');
-
-    // Clean up firmware directory
-    try {
-      await rm(join(firmwareDir, 'embedded_macro.h'));
-    } catch {
-      // Ignore cleanup errors
-    }
 
     // Return the hex file
     return new Response(hexContent, {
@@ -266,12 +281,12 @@ ${embeddedMacroContent}`;
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   } finally {
-    // Clean up temp directory
-    if (tempDir) {
+    // Clean up isolated build directory
+    if (tempBuildDir) {
       try {
-        await rm(tempDir, { recursive: true, force: true });
+        await rm(tempBuildDir, { recursive: true, force: true });
       } catch (error) {
-        console.error('Failed to clean up temp directory:', error);
+        console.error('Failed to clean up build directory:', error);
       }
     }
   }

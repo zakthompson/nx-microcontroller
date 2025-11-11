@@ -104,6 +104,7 @@ clean: mostlyclean
 	rm -f embedded_macro.h
 	rm -f JoystickStandalone.hex JoystickStandalone.elf JoystickStandalone.eep JoystickStandalone.bin
 	rm -f JoystickStandalone.lss JoystickStandalone.sym JoystickStandalone.map
+	rm -f obj/JoystickStandalone.o obj/JoystickStandalone.d
 
 # Build standalone macro firmware
 # Usage: make standalone MACRO=path/to/macro.json [LOOP=1]
