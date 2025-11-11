@@ -1,0 +1,11 @@
+# Fast travel to Tower of Mastery
+A 5
+WAIT 30
+DPAD_DOWN 5
+WAIT 10
+DPAD_DOWN 5
+WAIT 10
+A 5
+WAIT 60
+A 5
+WAIT 30

@@ -1,9 +1,17 @@
 ---
 import '../../styles/global.css';
-import ComingSoon from '../../components/ComingSoon.astro';
+import GamePage from '../../components/GamePage';
 ---
 
-<ComingSoon
-  title="Pokémon Legends: Z-A"
-  gradient="bg-gradient-to-br from-emerald-500 to-teal-700"
-/>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>Pokémon Legends: Z-A - NX Controller</title>
+  </head>
+  <body>
+    <GamePage gameId="legends-za" gameTitle="Pokémon Legends: Z-A" client:load />
+  </body>
+</html>

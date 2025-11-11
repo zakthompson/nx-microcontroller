@@ -1,0 +1,19 @@
+# Instructions:
+# ## Hunt for Eevee
+#
+# 1. Position yourself in an area where Eevee spawns
+# 2. Save your game before starting
+# 3. Plug in your microcontroller
+# 4. The bot will search for and encounter Eevee
+#
+# **Tips:**
+# - Make sure you have Poké Balls
+# - This works best in **Route 10** area
+# End Instructions
+
+# Eevee hunting macro
+LOOP 0
+W 5
+WAIT 100
+A 5
+WAIT 30

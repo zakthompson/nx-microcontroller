@@ -1,0 +1,19 @@
+# Instructions:
+# ## Hunt for Pikachu
+#
+# 1. Position yourself in an area where Pikachu spawns
+# 2. Save your game before starting
+# 3. Plug in your microcontroller
+# 4. The bot will search for and encounter Pikachu
+#
+# **Tips:**
+# - Make sure you have Poké Balls
+# - This works best in the **Santalune Forest** area
+# End Instructions
+
+# Pikachu hunting macro
+LOOP 0
+W 5
+WAIT 120
+A 5
+WAIT 30
