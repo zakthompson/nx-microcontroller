@@ -1,9 +1,0 @@
-# Fast travel to Lumiose City
-A 5
-WAIT 30
-DPAD_UP 5
-WAIT 10
-A 5
-WAIT 60
-A 5
-WAIT 30

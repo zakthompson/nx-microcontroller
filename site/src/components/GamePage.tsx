@@ -3,6 +3,7 @@ import BotSelector from './BotSelector';
 import MacroSelector from './MacroSelector';
 import McuSelector from './McuSelector';
 import InstructionsDisplay from './InstructionsDisplay';
+import Header from './Header';
 
 interface GamePageProps {
   gameId: string;
@@ -33,6 +34,7 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
   const [mcu, setMcu] = useState('atmega16u2');
   const [isCompiling, setIsCompiling] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [shouldAutoSelect, setShouldAutoSelect] = useState(false);
 
   // Track the current bot+macro pair to detect changes
   const selectionRef = useRef({ bot: selectedBot, macro: selectedMacro });
@@ -85,9 +87,10 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
 
         if (data.macros) {
           setMacros(data.macros);
+          setShouldAutoSelect(data.shouldAutoSelect ?? false);
 
-          // Auto-select if only one macro
-          if (data.macros.length === 1) {
+          // Auto-select if shouldAutoSelect is true
+          if (data.shouldAutoSelect && data.macros.length === 1) {
             setSelectedMacro(data.macros[0].filename);
           }
         }
@@ -148,9 +151,9 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
         ) {
           setMacroData(data);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Ignore abort errors
-        if (error.name === 'AbortError') {
+        if (error instanceof Error && error.name === 'AbortError') {
           return;
         }
 
@@ -221,10 +224,9 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
     );
   }
 
-  const isSingleOption = macros.length === 1;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900">
+      <Header />
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <header className="mb-8">
@@ -255,7 +257,7 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
           <main className="lg:col-span-3">
             {selectedBot && (
               <div className="space-y-6">
-                {!isSingleOption && (
+                {!shouldAutoSelect && (
                   <div className="rounded-lg bg-gray-800 p-6">
                     <h2 className="mb-4 text-xl font-semibold text-white">
                       Select Macro
@@ -264,7 +266,7 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
                       macros={macros}
                       selectedMacro={selectedMacro}
                       onSelectMacro={setSelectedMacro}
-                      isSingleOption={isSingleOption}
+                      isSingleOption={shouldAutoSelect}
                     />
                   </div>
                 )}
@@ -282,7 +284,7 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
                 {!macroData && selectedBot && (
                   <div className="rounded-lg bg-gray-800 p-8 text-center">
                     <p className="text-gray-400">
-                      {isSingleOption
+                      {shouldAutoSelect
                         ? 'Loading...'
                         : 'Select a macro to view instructions and download'}
                     </p>

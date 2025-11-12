@@ -47,7 +47,10 @@ export const GET: APIRoute = async ({ request }) => {
       };
     });
 
-    return new Response(JSON.stringify({ macros }), {
+    // Check if we should auto-select: single macro AND filename matches directory name
+    const shouldAutoSelect = files.length === 1 && files[0].replace('.macro', '') === bot;
+
+    return new Response(JSON.stringify({ macros, shouldAutoSelect }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

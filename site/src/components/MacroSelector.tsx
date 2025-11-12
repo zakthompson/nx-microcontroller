@@ -58,7 +58,7 @@ export default function MacroSelector({
       <div className="max-h-96 space-y-1 overflow-y-auto rounded-lg border border-gray-600 bg-gray-800 p-2">
         {filteredMacros.length === 0 ? (
           <div className="py-8 text-center text-gray-400">
-            No macros found matching "{searchTerm}"
+            No macros found matching &ldquo;{searchTerm}&rdquo;
           </div>
         ) : (
           filteredMacros.map((macro) => (

@@ -10,7 +10,7 @@ interface InstructionsDisplayProps {
 
 export default function InstructionsDisplay({
   instructions,
-  macroContent,
+  macroContent: _macroContent,
   mcu,
   onDownload,
   isCompiling,

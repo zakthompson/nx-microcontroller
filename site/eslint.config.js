@@ -21,9 +21,12 @@ export default [
         alert: 'readonly',
         confirm: 'readonly',
         console: 'readonly',
+        AbortController: 'readonly',
+        setTimeout: 'readonly',
         // Node globals for API routes
         process: 'readonly',
         Response: 'readonly',
+        URL: 'readonly',
       },
       parserOptions: {
         ecmaFeatures: {
