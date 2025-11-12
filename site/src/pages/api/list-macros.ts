@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { readdirSync, statSync } from 'fs';
+import { readdirSync, statSync, existsSync } from 'fs';
 import { join } from 'path';
 
 export const GET: APIRoute = async ({ request }) => {
@@ -15,8 +15,13 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
-    // Macros are stored in the top-level macros directory
-    const macrosDir = join(process.cwd(), '..', 'macros', game);
+    // Macros are stored in the macros directory
+    // In dev: process.cwd() = .../site, so we need ../macros
+    // In Docker: process.cwd() = /app, macros are copied to /app/macros
+    const macrosBaseDir = existsSync(join(process.cwd(), 'macros'))
+      ? join(process.cwd(), 'macros')
+      : join(process.cwd(), '..', 'macros');
+    const macrosDir = join(macrosBaseDir, game);
 
     // If no bot specified, list all bots for the game
     if (!bot) {

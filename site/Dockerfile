@@ -21,8 +21,9 @@ RUN npm ci --only=production
 # Copy site source code
 COPY site/ .
 
-# Copy firmware directory (from repo root context)
+# Copy firmware and macros directories (from repo root context)
 COPY firmware/ ./firmware/
+COPY macros/ ./macros/
 
 # Build the Astro application
 RUN npm run build

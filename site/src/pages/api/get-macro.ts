@@ -52,8 +52,12 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
-    // Macros are stored in the top-level macros directory
-    const macrosDir = join(process.cwd(), '..', 'macros');
+    // Macros are stored in the macros directory
+    // In dev: process.cwd() = .../site, so we need ../macros
+    // In Docker: process.cwd() = /app, macros are copied to /app/macros
+    const macrosDir = existsSync(join(process.cwd(), 'macros'))
+      ? join(process.cwd(), 'macros')
+      : join(process.cwd(), '..', 'macros');
     const macroPath = join(macrosDir, game, bot, filename);
     const content = readFileSync(macroPath, 'utf-8');
 
