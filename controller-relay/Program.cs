@@ -91,11 +91,28 @@ namespace SwitchController
         }
 
         /// <summary>
+        /// Resolves the configured ControllerType to a PA controller ID.
+        /// Returns the default (Wireless Pro Controller) if not recognized.
+        /// </summary>
+        private static uint ResolveControllerId(Configuration config)
+        {
+            uint? id = SwitchControllerConstants.ParseControllerType(config.ControllerType);
+            if (id == null)
+            {
+                Console.WriteLine($"Warning: Unknown ControllerType \"{config.ControllerType}\", using wireless-pro");
+                return PA_CID_NS1_WIRELESS_PRO_CONTROLLER;
+            }
+            return id.Value;
+        }
+
+        /// <summary>
         /// Connects a transport, either using the configured type or auto-detecting
         /// </summary>
         private static IControllerTransport? ConnectTransport(SerialConnection serial, string firmwareType)
         {
-            if (serial.Port == null) return null;
+            if (serial.Port == null || _config == null) return null;
+
+            uint controllerId = ResolveControllerId(_config);
 
             if (firmwareType == "native")
             {
@@ -105,8 +122,8 @@ namespace SwitchController
 
             if (firmwareType == "pabotbase")
             {
-                Console.WriteLine("Connecting with PABotBase firmware...");
-                return TryConnect(new PABotBaseTransport(), serial, "PABotBase");
+                Console.WriteLine($"Connecting with PABotBase firmware ({SwitchControllerConstants.ControllerTypeName(controllerId)})...");
+                return TryConnect(new PABotBaseTransport(controllerId), serial, "PABotBase");
             }
 
             // Auto-detect: try native first (fast 3-step handshake), then PA
@@ -122,8 +139,8 @@ namespace SwitchController
                 }
                 native.Dispose();
 
-                Console.WriteLine("Trying PABotBase handshake...");
-                var pa = new PABotBaseTransport();
+                Console.WriteLine($"Trying PABotBase handshake ({SwitchControllerConstants.ControllerTypeName(controllerId)})...");
+                var pa = new PABotBaseTransport(controllerId);
                 if (pa.Connect(serial.Port))
                 {
                     Console.WriteLine("Connected with PABotBase firmware.");

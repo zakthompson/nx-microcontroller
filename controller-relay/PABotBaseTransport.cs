@@ -18,14 +18,25 @@ namespace SwitchController
         private readonly Stopwatch _clock = Stopwatch.StartNew();
         private long _lastSendTimeMs;
 
-        // Controller mode determines command format and timing
-        private bool _useOemFormat;
-        private int _sendIntervalMs = PA_SEND_INTERVAL_WIRELESS_MS;
-        private ushort _commandDurationMs = PA_COMMAND_DURATION_WIRELESS_MS;
+        // Controller configuration
+        private readonly uint _controllerId;
+        private readonly bool _useOemFormat;
+        private readonly int _sendIntervalMs;
+        private readonly ushort _commandDurationMs;
 
         // In-flight command tracking
         private readonly Queue<uint> _inFlightSeqnums = new Queue<uint>();
         private readonly Dictionary<uint, (byte[] message, long sentAtMs)> _inFlightMessages = new Dictionary<uint, (byte[], long)>();
+
+
+        public PABotBaseTransport(uint controllerId = PA_CID_NS1_WIRELESS_PRO_CONTROLLER)
+        {
+            _controllerId = controllerId;
+            _useOemFormat = IsOemController(controllerId);
+            bool isWireless = (controllerId & 0x80) != 0;
+            _sendIntervalMs = isWireless ? PA_SEND_INTERVAL_WIRELESS_MS : PA_SEND_INTERVAL_WIRED_MS;
+            _commandDurationMs = isWireless ? PA_COMMAND_DURATION_WIRELESS_MS : PA_COMMAND_DURATION_WIRED_MS;
+        }
 
         public bool Connect(SerialPort port)
         {
@@ -59,18 +70,39 @@ namespace SwitchController
                 }
                 Console.WriteLine("OK");
 
-                // Set controller mode to wireless Pro Controller
-                Console.Write("  Setting controller mode (Wireless Pro Controller)... ");
-                if (!SetControllerMode(PA_CID_WIRELESS_PRO_CONTROLLER))
+                // Set controller mode
+                string controllerName = ControllerTypeName(_controllerId);
+                Console.Write($"  Setting controller mode ({controllerName})... ");
+                if (!SetControllerMode(_controllerId))
                 {
                     Console.WriteLine("no ACK (controller mode change failed)");
                     return false;
                 }
                 Console.WriteLine("OK");
 
-                _useOemFormat = true;
-                _sendIntervalMs = PA_SEND_INTERVAL_WIRELESS_MS;
-                _commandDurationMs = PA_COMMAND_DURATION_WIRELESS_MS;
+                // Verify mode change took effect (matches PA's refresh_controller_type)
+                Console.Write("  Verifying controller mode... ");
+                uint? activeMode = ReadControllerMode();
+                if (activeMode == null)
+                {
+                    Console.WriteLine("no response");
+                    return false;
+                }
+                if (activeMode.Value != _controllerId)
+                {
+                    Console.WriteLine($"MISMATCH: requested 0x{_controllerId:X4}, got 0x{activeMode.Value:X4}");
+                    return false;
+                }
+                Console.WriteLine($"OK (0x{activeMode.Value:X4})");
+
+                // Clear any residual commands on the device
+                Console.Write("  Stopping all commands... ");
+                if (!StopAllCommands())
+                {
+                    Console.WriteLine("no ACK");
+                    return false;
+                }
+                Console.WriteLine("OK");
 
                 return true;
             }
@@ -140,6 +172,67 @@ namespace SwitchController
             _inFlightMessages.Clear();
         }
 
+        private uint? ReadControllerMode()
+        {
+            if (_port == null) return null;
+
+            uint seqnum = _nextSeqnum++;
+            byte[] payload = BitConverter.GetBytes(seqnum);
+            byte[] message = FrameMessage(PA_MSG_READ_CONTROLLER_MODE, payload);
+            _port.Write(message, 0, message.Length);
+
+            return WaitForAckI32(2000);
+        }
+
+        /// <summary>
+        /// Waits for an ACK_REQUEST_I32 (0x14) response and extracts the uint32 data.
+        /// </summary>
+        private uint? WaitForAckI32(int timeoutMs)
+        {
+            int start = Environment.TickCount;
+            while (Environment.TickCount - start < timeoutMs)
+            {
+                ReadIntoBuffer();
+                var response = TryParseMessage();
+                if (response != null)
+                {
+                    if (response.Value.type == 0x14 && response.Value.payload.Length >= 8)
+                    {
+                        // ACK_REQUEST_I32: payload = seqnum(4) + data(4)
+                        return BitConverter.ToUInt32(response.Value.payload, 4);
+                    }
+                    if (IsAck(response.Value.type))
+                        return null; // Got an ACK but not I32 type
+
+                    // ACK any COMMAND_FINISHED that arrives during handshake
+                    if (response.Value.type == PA_MSG_COMMAND_FINISHED && response.Value.payload.Length >= 4)
+                    {
+                        uint finSeq = BitConverter.ToUInt32(response.Value.payload, 0);
+                        SendAckRequest(finSeq);
+                        continue;
+                    }
+
+                    if (!IsInfo(response.Value.type))
+                        Console.Write($"[got 0x{response.Value.type:X2}] ");
+                }
+
+                System.Threading.Thread.Sleep(2);
+            }
+            return null;
+        }
+
+        private bool StopAllCommands()
+        {
+            if (_port == null) return false;
+
+            uint seqnum = _nextSeqnum++;
+            byte[] payload = BitConverter.GetBytes(seqnum);
+            byte[] message = FrameMessage(PA_MSG_REQUEST_STOP, payload);
+            _port.Write(message, 0, message.Length);
+
+            return WaitForAck(2000);
+        }
+
         private bool SetControllerMode(uint controllerId)
         {
             if (_port == null) return false;
@@ -169,6 +262,15 @@ namespace SwitchController
                 {
                     if (IsAck(response.Value.type))
                         return true;
+
+                    // ACK any COMMAND_FINISHED that arrives during handshake
+                    if (response.Value.type == PA_MSG_COMMAND_FINISHED && response.Value.payload.Length >= 4)
+                    {
+                        uint finSeq = BitConverter.ToUInt32(response.Value.payload, 0);
+                        SendAckRequest(finSeq);
+                        Console.Write($"[acked 0x4A] ");
+                        continue;
+                    }
 
                     // Skip info messages silently; log anything else
                     if (!IsInfo(response.Value.type))

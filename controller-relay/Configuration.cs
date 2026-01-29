@@ -39,6 +39,14 @@ namespace SwitchController
         public string FirmwareType { get; set; } = "auto";
 
         /// <summary>
+        /// Controller type to emulate when using PABotBase firmware.
+        /// Valid values: wireless-pro (default), wired-pro, wired, wired-left-joycon,
+        /// wired-right-joycon, wireless-left-joycon, wireless-right-joycon,
+        /// and ns2-* variants for Nintendo Switch 2.
+        /// </summary>
+        public string ControllerType { get; set; } = "wireless-pro";
+
+        /// <summary>
         /// Hotkey enable button (must be held with other buttons for hotkey combos)
         /// </summary>
         public SwitchButton HotkeyEnable { get; set; } = SwitchButton.LS;
@@ -128,6 +136,11 @@ namespace SwitchController
                     {
                         config.FirmwareType = UnquoteValue(fwTypeStr).ToLowerInvariant();
                         Console.WriteLine($"  Firmware type: {config.FirmwareType}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "ControllerType=", out string? ctrlTypeStr) && ctrlTypeStr != null)
+                    {
+                        config.ControllerType = UnquoteValue(ctrlTypeStr).ToLowerInvariant();
+                        Console.WriteLine($"  Controller type: {config.ControllerType}");
                     }
                     else if (TryParseConfigLine(trimmed, "HotkeyEnable=", out string? hotkeyEnableStr) && TryParseButton(hotkeyEnableStr, out var hotkeyEnable))
                     {
