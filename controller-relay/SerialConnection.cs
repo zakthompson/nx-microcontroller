@@ -10,6 +10,12 @@ namespace SwitchController
     public class SerialConnection : IDisposable
     {
         private SerialPort? _serial;
+        private readonly Action<string>? _statusCallback;
+
+        public SerialConnection(Action<string>? statusCallback = null)
+        {
+            _statusCallback = statusCallback;
+        }
 
         public bool IsOpen => _serial?.IsOpen ?? false;
 
@@ -26,13 +32,12 @@ namespace SwitchController
                 _serial.Open();
                 _serial.DtrEnable = false;
                 _serial.RtsEnable = false;
-                Console.WriteLine($"Opened {portName}");
-                Console.WriteLine();
+                LogStatus($"Opened {portName}");
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to open {portName}: {ex.Message}");
+                LogStatus($"Failed to open {portName}: {ex.Message}");
                 return false;
             }
         }
@@ -53,6 +58,18 @@ namespace SwitchController
         {
             Close();
             _serial?.Dispose();
+        }
+
+        private void LogStatus(string message)
+        {
+            if (_statusCallback != null)
+            {
+                _statusCallback(message);
+            }
+            else
+            {
+                Console.WriteLine(message);
+            }
         }
     }
 }

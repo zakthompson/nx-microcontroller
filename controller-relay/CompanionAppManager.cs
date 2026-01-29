@@ -15,10 +15,12 @@ namespace SwitchController
         private int? _companionProcessId;
         private string? _companionProcessName;
         private readonly Configuration _config;
+        private readonly Action<string>? _statusCallback;
 
-        public CompanionAppManager(Configuration config)
+        public CompanionAppManager(Configuration config, Action<string>? statusCallback = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _statusCallback = statusCallback;
         }
 
         /// <summary>
@@ -33,11 +35,11 @@ namespace SwitchController
             {
                 if (!File.Exists(_config.CompanionAppPath))
                 {
-                    Console.WriteLine($"⚠️  Companion app not found: {_config.CompanionAppPath}");
+                    LogStatus($"⚠️  Companion app not found: {_config.CompanionAppPath}");
                     return;
                 }
 
-                Console.WriteLine($"Launching companion app: {_config.CompanionAppPath}");
+                LogStatus($"Launching companion app: {_config.CompanionAppPath}");
                 _companionProcess = Process.Start(new ProcessStartInfo
                 {
                     FileName = _config.CompanionAppPath,
@@ -48,7 +50,7 @@ namespace SwitchController
                 {
                     _companionProcessId = _companionProcess.Id;
                     _companionProcessName = _companionProcess.ProcessName;
-                    Console.WriteLine($"✓ Companion app launched (PID: {_companionProcessId}, Name: {_companionProcessName})");
+                    LogStatus($"✓ Companion app launched (PID: {_companionProcessId}, Name: {_companionProcessName})");
 
                     // Give the app time to initialize
                     Thread.Sleep(500);
@@ -56,19 +58,19 @@ namespace SwitchController
                     // Perform auto-click if configured
                     if (_config.AutoClickX.HasValue && _config.AutoClickY.HasValue)
                     {
-                        Console.WriteLine($"Waiting {_config.AutoClickDelay}ms before auto-click...");
+                        LogStatus($"Waiting {_config.AutoClickDelay}ms before auto-click...");
                         Thread.Sleep(_config.AutoClickDelay);
                         PerformAutoClick(_config.AutoClickX.Value, _config.AutoClickY.Value);
                     }
                 }
                 else
                 {
-                    Console.WriteLine("⚠️  Failed to get process handle for companion app");
+                    LogStatus("⚠️  Failed to get process handle for companion app");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️  Failed to launch companion app: {ex.Message}");
+                LogStatus($"⚠️  Failed to launch companion app: {ex.Message}");
             }
         }
 
@@ -84,31 +86,31 @@ namespace SwitchController
 
                 if (_config.AutoClickRelative)
                 {
-                    Console.WriteLine($"Auto-clicking at window-relative position ({x}, {y})...");
+                    LogStatus($"Auto-clicking at window-relative position ({x}, {y})...");
 
                     IntPtr windowHandle = FindCompanionWindow();
                     if (windowHandle == IntPtr.Zero)
                     {
-                        Console.WriteLine("⚠️  Could not find companion app window. Using absolute coordinates.");
+                        LogStatus("⚠️  Could not find companion app window. Using absolute coordinates.");
                     }
                     else if (WindowsNative.GetWindowRect(windowHandle, out var windowRect))
                     {
                         screenX = windowRect.Left + x;
                         screenY = windowRect.Top + y;
-                        Console.WriteLine($"  Window position: ({windowRect.Left}, {windowRect.Top})");
-                        Console.WriteLine($"  Clicking at screen position: ({screenX}, {screenY})");
+                        LogStatus($"  Window position: ({windowRect.Left}, {windowRect.Top})");
+                        LogStatus($"  Clicking at screen position: ({screenX}, {screenY})");
 
                         WindowsNative.SetForegroundWindow(windowHandle);
                         Thread.Sleep(100);
                     }
                     else
                     {
-                        Console.WriteLine("⚠️  Could not get window rectangle. Using absolute coordinates.");
+                        LogStatus("⚠️  Could not get window rectangle. Using absolute coordinates.");
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"Auto-clicking at absolute screen position ({x}, {y})...");
+                    LogStatus($"Auto-clicking at absolute screen position ({x}, {y})...");
                 }
 
                 // Save and restore cursor position
@@ -121,14 +123,14 @@ namespace SwitchController
                 Thread.Sleep(50);
                 WindowsNative.mouse_event(WindowsNative.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
 
-                Console.WriteLine("✓ Auto-click completed");
+                LogStatus("✓ Auto-click completed");
 
                 Thread.Sleep(100);
                 WindowsNative.SetCursorPos(currentPos.X, currentPos.Y);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️  Auto-click failed: {ex.Message}");
+                LogStatus($"⚠️  Auto-click failed: {ex.Message}");
             }
         }
 
@@ -171,14 +173,14 @@ namespace SwitchController
                     IntPtr windowHandle = FindWindowByProcessId((uint)pid);
                     if (windowHandle != IntPtr.Zero)
                     {
-                        Console.WriteLine($"  Found window for PID {pid}");
+                        LogStatus($"  Found window for PID {pid}");
                         return windowHandle;
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error finding window: {ex.Message}");
+                LogStatus($"Error finding window: {ex.Message}");
             }
 
             return IntPtr.Zero;
@@ -238,7 +240,7 @@ namespace SwitchController
         {
             if (_companionProcess == null && _companionProcessId == null)
             {
-                Console.WriteLine("No companion process to close");
+                LogStatus("No companion process to close");
                 return;
             }
 
@@ -250,32 +252,32 @@ namespace SwitchController
                     {
                         if (!_companionProcess.HasExited)
                         {
-                            Console.WriteLine($"Closing main companion process (PID: {_companionProcess.Id})...");
+                            LogStatus($"Closing main companion process (PID: {_companionProcess.Id})...");
                             _companionProcess.Kill(entireProcessTree: true);
                             _companionProcess.WaitForExit(1000);
                         }
                         else
                         {
-                            Console.WriteLine($"Main companion process (PID: {_companionProcess.Id}) already exited");
+                            LogStatus($"Main companion process (PID: {_companionProcess.Id}) already exited");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Note: Main process already gone ({ex.Message})");
+                        LogStatus($"Note: Main process already gone ({ex.Message})");
                     }
                 }
 
                 if (_companionProcessId.HasValue)
                 {
-                    Console.WriteLine($"Searching for child processes of PID {_companionProcessId}...");
+                    LogStatus($"Searching for child processes of PID {_companionProcessId}...");
                     KillProcessAndChildren(_companionProcessId.Value);
                 }
 
-                Console.WriteLine("✓ Companion app and children closed");
+                LogStatus("✓ Companion app and children closed");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️  Error closing companion app: {ex.Message}");
+                LogStatus($"⚠️  Error closing companion app: {ex.Message}");
             }
             finally
             {
@@ -342,6 +344,18 @@ namespace SwitchController
         public void Dispose()
         {
             Close();
+        }
+
+        private void LogStatus(string message)
+        {
+            if (_statusCallback != null)
+            {
+                _statusCallback(message);
+            }
+            else
+            {
+                LogStatus(message);
+            }
         }
     }
 }
