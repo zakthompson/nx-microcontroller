@@ -13,6 +13,7 @@ namespace SwitchController
     class Program
     {
         private static SerialConnection? _serial;
+        private static IControllerTransport? _transport;
         private static MacroSystem? _macroSystem;
         private static CompanionAppManager? _companionAppManager;
         private static Configuration? _config;
@@ -59,14 +60,14 @@ namespace SwitchController
             var keyThread = new Thread(KeyWatcherThread) { IsBackground = true };
             keyThread.Start();
 
-            // Sync with firmware
-            Console.WriteLine("Waiting for Arduino and syncing...");
-            while (!_serial.PerformSyncHandshake())
+            // Connect transport (auto-detect or config override)
+            _transport = ConnectTransport(_serial, _config.FirmwareType);
+            if (_transport == null)
             {
-                Console.Write("\rArduino not responding, retrying...");
-                Thread.Sleep(500);
+                Console.WriteLine("Failed to connect to firmware. Exiting.");
+                Cleanup();
+                return;
             }
-            Console.WriteLine("\nSynced successfully with Arduino.");
 
             // Wait for XInput controller
             var controller = new Controller(UserIndex.One);
@@ -87,6 +88,70 @@ namespace SwitchController
 
             // Cleanup
             Cleanup();
+        }
+
+        /// <summary>
+        /// Connects a transport, either using the configured type or auto-detecting
+        /// </summary>
+        private static IControllerTransport? ConnectTransport(SerialConnection serial, string firmwareType)
+        {
+            if (serial.Port == null) return null;
+
+            if (firmwareType == "native")
+            {
+                Console.WriteLine("Connecting with native firmware...");
+                return TryConnect(new NativeTransport(), serial, "native");
+            }
+
+            if (firmwareType == "pabotbase")
+            {
+                Console.WriteLine("Connecting with PABotBase firmware...");
+                return TryConnect(new PABotBaseTransport(), serial, "PABotBase");
+            }
+
+            // Auto-detect: try native first (fast 3-step handshake), then PA
+            Console.WriteLine("Auto-detecting firmware...");
+            while (_running)
+            {
+                Console.WriteLine("Trying native handshake...");
+                var native = new NativeTransport();
+                if (native.Connect(serial.Port))
+                {
+                    Console.WriteLine("Connected with native firmware.");
+                    return native;
+                }
+                native.Dispose();
+
+                Console.WriteLine("Trying PABotBase handshake...");
+                var pa = new PABotBaseTransport();
+                if (pa.Connect(serial.Port))
+                {
+                    Console.WriteLine("Connected with PABotBase firmware.");
+                    return pa;
+                }
+                pa.Dispose();
+
+                Console.Write("\rFirmware not responding, retrying...");
+                Thread.Sleep(500);
+            }
+
+            return null;
+        }
+
+        private static IControllerTransport? TryConnect(IControllerTransport transport, SerialConnection serial, string name)
+        {
+            while (_running)
+            {
+                if (serial.Port != null && transport.Connect(serial.Port))
+                {
+                    Console.WriteLine($"Connected with {name} firmware.");
+                    return transport;
+                }
+                Console.Write($"\r{name} firmware not responding, retrying...");
+                Thread.Sleep(500);
+            }
+            transport.Dispose();
+            return null;
         }
 
         /// <summary>
@@ -129,21 +194,20 @@ namespace SwitchController
                 // Handle button combos and macro control
                 HandleMacroControls(controllerConnected, gamepad, sw.ElapsedMilliseconds);
 
-                // Build packet from gamepad or macro
-                byte[] packet = BuildCurrentPacket(gamepad, sw.ElapsedMilliseconds);
+                // Build controller state from gamepad or macro
+                ControllerState controllerState = BuildCurrentState(gamepad, sw.ElapsedMilliseconds);
 
-                // Record frame if recording
+                // Record frame if recording (convert to native packet for macro file compat)
                 if (_macroSystem?.IsRecording == true)
                 {
-                    _macroSystem.RecordFrame(sw.ElapsedMilliseconds, packet);
+                    _macroSystem.RecordFrame(sw.ElapsedMilliseconds, controllerState.ToNativePacket());
                 }
 
-                // Send packet over serial
+                // Send state via transport
                 try
                 {
-                    byte crc = PacketBuilder.CalculateCrc8(packet, 0, packet.Length);
-                    _serial?.SendPacket(packet, crc);
-                    _serial?.CheckResponses();
+                    _transport?.SendState(controllerState);
+                    _transport?.Update();
                 }
                 catch (Exception ex)
                 {
@@ -298,9 +362,9 @@ namespace SwitchController
         }
 
         /// <summary>
-        /// Builds the current packet from either macro playback or gamepad state
+        /// Builds the current ControllerState from either macro playback or gamepad state
         /// </summary>
-        private static byte[] BuildCurrentPacket(Gamepad gamepad, long currentTime)
+        private static ControllerState BuildCurrentState(Gamepad gamepad, long currentTime)
         {
             if (_macroSystem != null && (_macroSystem.IsPlaying || _macroSystem.IsLooping))
             {
@@ -319,21 +383,25 @@ namespace SwitchController
                     {
                         // Single playback finished
                         _macroSystem.StopPlayback();
-                        return PacketBuilder.BuildPacket(gamepad, _forceHomeOnce);
+                        return BuildGamepadState(gamepad);
                     }
                 }
 
                 if (macroPacket != null)
                 {
-                    _forceHomeOnce = false; // Clear HOME flag if set
-                    return macroPacket;
+                    _forceHomeOnce = false;
+                    return ControllerState.FromNativePacket(macroPacket);
                 }
             }
 
-            // Build packet from gamepad
-            byte[] packet = PacketBuilder.BuildPacket(gamepad, _forceHomeOnce);
+            return BuildGamepadState(gamepad);
+        }
+
+        private static ControllerState BuildGamepadState(Gamepad gamepad)
+        {
+            var state = PacketBuilder.BuildControllerState(gamepad, _forceHomeOnce);
             _forceHomeOnce = false;
-            return packet;
+            return state;
         }
 
         /// <summary>
@@ -390,6 +458,7 @@ namespace SwitchController
         private static void Cleanup()
         {
             _companionAppManager?.Dispose();
+            _transport?.Dispose();
             _serial?.Dispose();
         }
     }

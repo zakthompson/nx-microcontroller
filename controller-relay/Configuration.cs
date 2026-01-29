@@ -34,6 +34,11 @@ namespace SwitchController
         public bool AutoClickRelative { get; set; } = true;
 
         /// <summary>
+        /// Firmware type: "auto" (default), "native", or "pabotbase"
+        /// </summary>
+        public string FirmwareType { get; set; } = "auto";
+
+        /// <summary>
         /// Hotkey enable button (must be held with other buttons for hotkey combos)
         /// </summary>
         public SwitchButton HotkeyEnable { get; set; } = SwitchButton.LS;
@@ -118,6 +123,11 @@ namespace SwitchController
                         string val = relStr.ToLowerInvariant();
                         config.AutoClickRelative = val == "true" || val == "1" || val == "yes";
                         Console.WriteLine($"  Auto-click relative: {config.AutoClickRelative}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "FirmwareType=", out string? fwTypeStr) && fwTypeStr != null)
+                    {
+                        config.FirmwareType = UnquoteValue(fwTypeStr).ToLowerInvariant();
+                        Console.WriteLine($"  Firmware type: {config.FirmwareType}");
                     }
                     else if (TryParseConfigLine(trimmed, "HotkeyEnable=", out string? hotkeyEnableStr) && TryParseButton(hotkeyEnableStr, out var hotkeyEnable))
                     {

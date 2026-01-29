@@ -10,28 +10,30 @@ namespace SwitchController
     public static class PacketBuilder
     {
         /// <summary>
-        /// Builds an 8-byte Pokkén report from gamepad state
+        /// Builds a protocol-neutral ControllerState from gamepad state
         /// </summary>
-        /// <param name="gamepad">XInput gamepad state</param>
-        /// <param name="forceHome">If true, forces HOME button to be pressed</param>
-        /// <returns>8-byte packet (buttons_hi, buttons_lo, HAT, LX, LY, RX, RY, vendor)</returns>
-        public static byte[] BuildPacket(Gamepad gamepad, bool forceHome = false)
+        public static ControllerState BuildControllerState(Gamepad gamepad, bool forceHome = false)
         {
             ushort buttons = BuildButtonMask(gamepad, forceHome);
             byte hat = BuildHatValue(gamepad.Buttons);
-
-            // Build axis values with deadzone and inversion
             (byte lx, byte ly, byte rx, byte ry) = BuildAxisValues(gamepad);
 
-            // Wire order: buttons_hi, buttons_lo, HAT, LX, LY, RX, RY, vendor
-            return new byte[]
+            return new ControllerState
             {
-                (byte)((buttons >> 8) & 0xFF),  // buttons high
-                (byte)(buttons & 0xFF),         // buttons low
-                hat,
-                lx, ly, rx, ry,
-                0x00                            // vendor byte
+                Buttons0 = (byte)(buttons & 0xFF),
+                Buttons1 = (byte)((buttons >> 8) & 0xFF),
+                Dpad = hat,
+                LX = lx, LY = ly, RX = rx, RY = ry
             };
+        }
+
+        /// <summary>
+        /// Builds an 8-byte native wire packet from gamepad state.
+        /// Wrapper around BuildControllerState for backward compatibility.
+        /// </summary>
+        public static byte[] BuildPacket(Gamepad gamepad, bool forceHome = false)
+        {
+            return BuildControllerState(gamepad, forceHome).ToNativePacket();
         }
 
         /// <summary>
