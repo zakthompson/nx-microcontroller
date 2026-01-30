@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import MacroLegend from './MacroLegend';
+import PlatformSelector from './PlatformSelector';
 
 const MCU_OPTIONS = [
   { value: 'atmega16u2', label: 'atmega16u2 (UNO R3)' },
@@ -16,6 +17,7 @@ interface SavedMacros {
 export default function MacroEditor() {
   const [macroName, setMacroName] = useState('');
   const [macroText, setMacroText] = useState('');
+  const [platform, setPlatform] = useState('avr');
   const [mcu, setMcu] = useState('atmega16u2');
   const [loop, setLoop] = useState(true);
   const [savedMacros, setSavedMacros] = useState<SavedMacros>({});
@@ -199,7 +201,8 @@ export default function MacroEditor() {
         body: JSON.stringify({
           macroText,
           macroName: nameToUse,
-          mcu,
+          platform,
+          mcu: (platform === 'avr' || platform === 'pico') ? mcu : undefined,
           loop,
           savedMacros,
         }),
@@ -216,7 +219,11 @@ export default function MacroEditor() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${nameToUse}-${mcu}.hex`;
+
+      // Determine file extension based on platform
+      const ext = platform === 'avr' ? `.hex` : platform === 'pico' ? '.uf2' : '.bin';
+      const suffix = platform === 'avr' ? `-${mcu}` : `-${platform}`;
+      a.download = `${nameToUse}${suffix}${ext}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -244,22 +251,14 @@ export default function MacroEditor() {
         </div>
 
         {/* Toolbar */}
-        <div className="mb-6 grid grid-cols-1 gap-4 rounded-lg bg-gray-800 p-4 md:grid-cols-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-300">
-              Microcontroller
-            </label>
-            <select
-              value={mcu}
-              onChange={(e) => setMcu(e.target.value)}
-              className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
-            >
-              {MCU_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+        <div className="mb-6 grid grid-cols-1 gap-4 rounded-lg bg-gray-800 p-4">
+          <div className="md:col-span-2">
+            <PlatformSelector
+              selectedPlatform={platform}
+              onSelectPlatform={setPlatform}
+              selectedMcu={mcu}
+              onSelectMcu={setMcu}
+            />
           </div>
 
           <div>

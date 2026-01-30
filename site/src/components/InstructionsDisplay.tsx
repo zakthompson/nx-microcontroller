@@ -1,16 +1,29 @@
 import ReactMarkdown from 'react-markdown';
+import { PLATFORM_OPTIONS } from './PlatformSelector';
 
 interface InstructionsDisplayProps {
   instructions: string;
   macroContent: string;
+  platform: string;
   mcu: string;
   onDownload: () => void;
   isCompiling: boolean;
 }
 
+function getTargetLabel(platform: string, mcu: string): string {
+  const platformOption = PLATFORM_OPTIONS.find((p) => p.value === platform);
+  if (!platformOption) return mcu;
+
+  if (!platformOption.mcuOptions) return platformOption.label;
+
+  const mcuOption = platformOption.mcuOptions.find((m) => m.value === mcu);
+  return mcuOption?.label ?? mcu;
+}
+
 export default function InstructionsDisplay({
   instructions,
   macroContent: _macroContent,
+  platform,
   mcu,
   onDownload,
   isCompiling,
@@ -74,7 +87,7 @@ export default function InstructionsDisplay({
         <div className="space-y-4">
           <div>
             <label className="mb-2 block text-sm text-gray-300">
-              Microcontroller: <span className="font-semibold text-white">{mcu}</span>
+              Target: <span className="font-semibold text-white">{getTargetLabel(platform, mcu)}</span>
             </label>
           </div>
           <button

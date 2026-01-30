@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import BotSelector from './BotSelector';
 import MacroSelector from './MacroSelector';
-import McuSelector from './McuSelector';
+import PlatformSelector from './PlatformSelector';
 import InstructionsDisplay from './InstructionsDisplay';
 import Header from './Header';
 
@@ -31,6 +31,7 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
   const [macros, setMacros] = useState<MacroOption[]>([]);
   const [selectedMacro, setSelectedMacro] = useState<string | null>(null);
   const [macroData, setMacroData] = useState<MacroData | null>(null);
+  const [platform, setPlatform] = useState('avr');
   const [mcu, setMcu] = useState('atmega16u2');
   const [isCompiling, setIsCompiling] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -187,7 +188,8 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
         body: JSON.stringify({
           macroText: macroData.content,
           macroName: selectedMacro.replace('.macro', ''),
-          mcu,
+          platform,
+          mcu: (platform === 'avr' || platform === 'pico') ? mcu : undefined,
           loop: true,
           savedMacros: {},
         }),
@@ -203,7 +205,11 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = selectedMacro.replace('.macro', '.hex');
+
+      // Determine file extension based on platform
+      const ext = platform === 'avr' ? '.hex' : platform === 'pico' ? '.uf2' : '.bin';
+      a.download = selectedMacro.replace('.macro', ext);
+
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -249,7 +255,12 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
                 selectedBot={selectedBot}
                 onSelectBot={setSelectedBot}
               />
-              <McuSelector selectedMcu={mcu} onSelectMcu={setMcu} />
+              <PlatformSelector
+                selectedPlatform={platform}
+                onSelectPlatform={setPlatform}
+                selectedMcu={mcu}
+                onSelectMcu={setMcu}
+              />
             </div>
           </aside>
 
@@ -275,6 +286,7 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
                   <InstructionsDisplay
                     instructions={macroData.instructions}
                     macroContent={macroData.content}
+                    platform={platform}
                     mcu={mcu}
                     onDownload={handleDownload}
                     isCompiling={isCompiling}
