@@ -54,8 +54,8 @@ namespace SwitchController
             Console.WriteLine("Press Ctrl+C to stop, or use the quit hotkey combo on your controller.");
             Console.WriteLine();
 
-            // Create and start relay session
-            var session = new RelaySession(config, config.ComPort);
+            // Create and start relay session (headless mode - no owner process ID for focus tracking)
+            var session = new RelaySession(config, config.ComPort, pairMode: false, ownerProcessId: null);
             session.StatusUpdate += Console.WriteLine;
 
             bool sessionEnded = false;

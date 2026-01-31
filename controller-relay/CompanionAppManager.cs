@@ -17,6 +17,11 @@ namespace SwitchController
         private readonly Configuration _config;
         private readonly Action<string>? _statusCallback;
 
+        /// <summary>
+        /// Gets the process ID of the companion application, if running
+        /// </summary>
+        public int? ProcessId => _companionProcessId;
+
         public CompanionAppManager(Configuration config, Action<string>? statusCallback = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));

@@ -18,6 +18,7 @@ namespace SwitchController
         private ComboBox _comPortCombo = null!;
         private ComboBox _firmwareCombo = null!;
         private ComboBox _controllerTypeCombo = null!;
+        private ComboBox _inputBackendCombo = null!;
         private Button _refreshPortsButton = null!;
 
         // Companion app group controls
@@ -63,7 +64,7 @@ namespace SwitchController
             int y = 10;
 
             // Connection group
-            var connectionGroup = CreateGroupBox("Connection", 10, y, 560, 80);
+            var connectionGroup = CreateGroupBox("Connection", 10, y, 560, 110);
             Controls.Add(connectionGroup);
 
             var comPortLabel = new Label { Text = "COM Port:", Left = 10, Top = 20, Width = 80 };
@@ -118,7 +119,21 @@ namespace SwitchController
             _controllerTypeCombo.SelectedIndexChanged += (s, e) => UpdatePairButtonVisibility();
             connectionGroup.Controls.Add(_controllerTypeCombo);
 
-            y += 90;
+            var inputBackendLabel = new Label { Text = "Input:", Left = 10, Top = 80, Width = 80 };
+            connectionGroup.Controls.Add(inputBackendLabel);
+
+            _inputBackendCombo = new ComboBox
+            {
+                Left = 90,
+                Top = 77,
+                Width = 150,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            _inputBackendCombo.Items.AddRange(new[] { "XInput", "SDL2/Generic" });
+            _inputBackendCombo.SelectedIndex = 0;
+            connectionGroup.Controls.Add(_inputBackendCombo);
+
+            y += 120;
 
             // Companion App group
             var companionGroup = CreateGroupBox("Companion App", 10, y, 560, 105);
@@ -387,6 +402,18 @@ namespace SwitchController
                     break;
             }
 
+            // Input backend
+            switch (_config.InputBackend.ToLowerInvariant())
+            {
+                case "sdl2":
+                case "sdl":
+                    _inputBackendCombo.SelectedIndex = 1;
+                    break;
+                default:
+                    _inputBackendCombo.SelectedIndex = 0;
+                    break;
+            }
+
             // Companion app
             _companionPathTextBox.Text = _config.CompanionAppPath ?? string.Empty;
             _clickXTextBox.Text = _config.AutoClickX?.ToString() ?? string.Empty;
@@ -477,6 +504,12 @@ namespace SwitchController
                 _ => "wireless-pro"
             };
 
+            _config.InputBackend = _inputBackendCombo.SelectedIndex switch
+            {
+                1 => "sdl2",
+                _ => "xinput"
+            };
+
             _config.CompanionAppPath = string.IsNullOrWhiteSpace(_companionPathTextBox.Text) ? null : _companionPathTextBox.Text;
 
             if (int.TryParse(_clickXTextBox.Text, out int clickX))
@@ -515,7 +548,7 @@ namespace SwitchController
             _statusTextBox.Clear();
 
             // Create and start session
-            _session = new RelaySession(_config, portName, pairMode);
+            _session = new RelaySession(_config, portName, pairMode, Environment.ProcessId);
             _session.StatusUpdate += Session_StatusUpdate;
             _session.SessionStopped += Session_SessionStopped;
             _session.Start();
@@ -552,6 +585,7 @@ namespace SwitchController
             _refreshPortsButton.Enabled = enabled;
             _firmwareCombo.Enabled = enabled;
             _controllerTypeCombo.Enabled = enabled;
+            _inputBackendCombo.Enabled = enabled;
             if (enabled) UpdatePairButtonVisibility();
             _companionPathTextBox.Enabled = enabled;
             _browseButton.Enabled = enabled;

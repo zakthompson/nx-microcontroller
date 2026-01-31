@@ -98,7 +98,7 @@ namespace SwitchController
         }
 
         /// <summary>
-        /// Builds axis values with deadzone processing and optional Y-inversion
+        /// Builds axis values with deadzone processing and optional Y-inversion (XInput version)
         /// </summary>
         private static (byte lx, byte ly, byte rx, byte ry) BuildAxisValues(Gamepad gamepad)
         {
@@ -107,6 +107,14 @@ namespace SwitchController
             int rx = gamepad.RightThumbX;
             int ry = gamepad.RightThumbY;
 
+            return BuildAxisValues(lx, ly, rx, ry);
+        }
+
+        /// <summary>
+        /// Builds axis values with deadzone processing and optional Y-inversion (generic version)
+        /// </summary>
+        internal static (byte lx, byte ly, byte rx, byte ry) BuildAxisValues(int lx, int ly, int rx, int ry)
+        {
             // Apply Joy-Con style deadzones
             ApplyJoyConDeadzone(ref lx, ref ly);
             ApplyJoyConDeadzone(ref rx, ref ry);
@@ -135,7 +143,7 @@ namespace SwitchController
         /// <summary>
         /// Applies Joy-Con style deadzone: radial deadzone + axial deadzone to prevent cross-axis bleeding
         /// </summary>
-        private static void ApplyJoyConDeadzone(ref int x, ref int y)
+        internal static void ApplyJoyConDeadzone(ref int x, ref int y)
         {
             // Radial deadzone (~15% like Joy-Con)
             long magSquared = (long)x * x + (long)y * y;
@@ -165,7 +173,7 @@ namespace SwitchController
         /// <summary>
         /// Clamps axis value to avoid -32768 edge case
         /// </summary>
-        private static int Clamp(int value)
+        internal static int Clamp(int value)
         {
             if (value < -32767) return -32767;
             if (value > 32767) return 32767;
@@ -175,7 +183,7 @@ namespace SwitchController
         /// <summary>
         /// Maps 16-bit signed axis value to 8-bit unsigned (0-255)
         /// </summary>
-        private static byte Map16BitTo8Bit(int value)
+        internal static byte Map16BitTo8Bit(int value)
         {
             int unsigned = value + 32768;  // Convert to 0-65535
             if (unsigned < 0) unsigned = 0;
@@ -186,7 +194,7 @@ namespace SwitchController
         /// <summary>
         /// Snaps axis value to center (0x80) if within tolerance
         /// </summary>
-        private static void SnapToCenter(ref byte value)
+        internal static void SnapToCenter(ref byte value)
         {
             if (Math.Abs(value - AXIS_CENTER) <= AXIS_CENTER_TOLERANCE)
             {

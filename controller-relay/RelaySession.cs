@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
-using SharpDX.XInput;
 using static SwitchController.SwitchControllerConstants;
 
 namespace SwitchController
@@ -15,13 +14,17 @@ namespace SwitchController
         private readonly Configuration _config;
         private readonly string _portName;
         private readonly bool _pairMode;
+        private readonly int? _ownerProcessId;
         private SerialConnection? _serial;
         private IControllerTransport? _transport;
         private MacroSystem? _macroSystem;
         private CompanionAppManager? _companionAppManager;
+        private IControllerInput? _input;
+        private FocusTracker? _focusTracker;
         private Thread? _relayThread;
         private bool _running;
         private bool _forceHomeOnce;
+        private string? _lastStatus;
 
         // Button state tracking for edge detection
         private readonly System.Collections.Generic.Dictionary<SwitchButton, bool> _lastButtonStates =
@@ -46,11 +49,16 @@ namespace SwitchController
         /// When true, sends RESET_TO_CONTROLLER during handshake to wipe pairing
         /// state and put the virtual controller into discoverable mode.
         /// </param>
-        public RelaySession(Configuration config, string portName, bool pairMode = false)
+        /// <param name="ownerProcessId">
+        /// Optional process ID of the owner window (GUI mode). Used for focus tracking.
+        /// Pass null in headless mode to disable focus gating when no companion app.
+        /// </param>
+        public RelaySession(Configuration config, string portName, bool pairMode = false, int? ownerProcessId = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _portName = portName ?? throw new ArgumentNullException(nameof(portName));
             _pairMode = pairMode;
+            _ownerProcessId = ownerProcessId;
         }
 
         /// <summary>
@@ -129,13 +137,21 @@ namespace SwitchController
                 return;
             }
 
-            // Wait for XInput controller
-            var controller = new Controller(UserIndex.One);
-            while (_running && !controller.IsConnected)
+            // Create controller input based on configured backend
+            _input = _config.InputBackend.ToLowerInvariant() switch
             {
-                LogStatus("Waiting for XInput controller...");
+                "sdl2" or "sdl" => new SdlControllerInput(),
+                _ => new XInputControllerInput()
+            };
+
+            LogStatus($"Using input backend: {_config.InputBackend}");
+
+            // Wait for controller
+            while (_running && !_input.IsConnected)
+            {
+                LogStatus("Waiting for controller...");
                 Thread.Sleep(500);
-                controller = new Controller(UserIndex.One);
+                _input.Update();
             }
 
             if (!_running)
@@ -147,8 +163,19 @@ namespace SwitchController
             _companionAppManager = new CompanionAppManager(_config, LogStatus);
             _companionAppManager.Launch();
 
+            // Set up focus tracking
+            _focusTracker = new FocusTracker();
+            if (_ownerProcessId.HasValue)
+            {
+                _focusTracker.AddProcessId(_ownerProcessId.Value);
+            }
+            if (_companionAppManager.ProcessId.HasValue)
+            {
+                _focusTracker.AddProcessId(_companionAppManager.ProcessId.Value);
+            }
+
             // Run main loop
-            RunMainLoop(controller);
+            RunMainLoop();
         }
 
         private IControllerTransport? ConnectTransport(SerialConnection serial, string firmwareType)
@@ -227,7 +254,7 @@ namespace SwitchController
             return id.Value;
         }
 
-        private void RunMainLoop(Controller controller)
+        private void RunMainLoop()
         {
             var sw = Stopwatch.StartNew();
             long nextTick = sw.ElapsedMilliseconds;
@@ -242,30 +269,30 @@ namespace SwitchController
                 }
                 nextTick += UPDATE_INTERVAL_MS;
 
+                // Update input state
+                _input?.Update();
+
+                // Update focus tracking
+                _focusTracker?.Update(now);
+                bool focused = _focusTracker?.IsFocused ?? true;
+
                 // Allow macro playback to continue even when controller disconnected
                 bool macroActive = _macroSystem != null && (_macroSystem.IsPlaying || _macroSystem.IsLooping);
-                if (!controller.IsConnected && !macroActive)
+                if (!(_input?.IsConnected ?? false) && !macroActive)
                 {
                     LogStatus("Controller disconnected...");
                     Thread.Sleep(250);
                     continue;
                 }
 
-                // Get gamepad state (only if controller connected)
-                Gamepad gamepad = default;
-                bool controllerConnected = controller.IsConnected;
-
-                if (controllerConnected)
+                // Handle button combos and macro control (only when focused)
+                if (focused)
                 {
-                    var state = controller.GetState();
-                    gamepad = state.Gamepad;
+                    HandleMacroControls(sw.ElapsedMilliseconds);
                 }
 
-                // Handle button combos and macro control
-                HandleMacroControls(controllerConnected, gamepad, sw.ElapsedMilliseconds);
-
-                // Build controller state from gamepad or macro
-                ControllerState controllerState = BuildCurrentState(gamepad, sw.ElapsedMilliseconds);
+                // Build controller state from input or macro
+                ControllerState controllerState = BuildCurrentState(sw.ElapsedMilliseconds, focused);
 
                 // Record frame if recording
                 if (_macroSystem?.IsRecording == true)
@@ -287,69 +314,25 @@ namespace SwitchController
                 // Update status display periodically
                 if (sw.ElapsedMilliseconds % 500 < UPDATE_INTERVAL_MS)
                 {
-                    UpdateStatusDisplay(gamepad);
+                    UpdateStatusDisplay(focused);
                 }
             }
         }
 
-        private bool IsButtonPressed(bool controllerConnected, Gamepad gamepad, SwitchButton button)
+        private void HandleMacroControls(long currentTime)
         {
-            if (!controllerConnected || button == SwitchButton.None)
-                return false;
-
-            switch (button)
-            {
-                case SwitchButton.LS:
-                    return (gamepad.Buttons & GamepadButtonFlags.LeftThumb) != 0;
-                case SwitchButton.RS:
-                    return (gamepad.Buttons & GamepadButtonFlags.RightThumb) != 0;
-                case SwitchButton.Up:
-                    return (gamepad.Buttons & GamepadButtonFlags.DPadUp) != 0;
-                case SwitchButton.Down:
-                    return (gamepad.Buttons & GamepadButtonFlags.DPadDown) != 0;
-                case SwitchButton.Left:
-                    return (gamepad.Buttons & GamepadButtonFlags.DPadLeft) != 0;
-                case SwitchButton.Right:
-                    return (gamepad.Buttons & GamepadButtonFlags.DPadRight) != 0;
-                case SwitchButton.L:
-                    return (gamepad.Buttons & GamepadButtonFlags.LeftShoulder) != 0;
-                case SwitchButton.R:
-                    return (gamepad.Buttons & GamepadButtonFlags.RightShoulder) != 0;
-                case SwitchButton.ZL:
-                    return gamepad.LeftTrigger > TRIGGER_THRESHOLD;
-                case SwitchButton.ZR:
-                    return gamepad.RightTrigger > TRIGGER_THRESHOLD;
-                case SwitchButton.A:
-                    return (gamepad.Buttons & GamepadButtonFlags.B) != 0;
-                case SwitchButton.B:
-                    return (gamepad.Buttons & GamepadButtonFlags.A) != 0;
-                case SwitchButton.X:
-                    return (gamepad.Buttons & GamepadButtonFlags.Y) != 0;
-                case SwitchButton.Y:
-                    return (gamepad.Buttons & GamepadButtonFlags.X) != 0;
-                case SwitchButton.Plus:
-                    return (gamepad.Buttons & GamepadButtonFlags.Start) != 0;
-                case SwitchButton.Minus:
-                    return (gamepad.Buttons & GamepadButtonFlags.Back) != 0;
-                default:
-                    return false;
-            }
-        }
-
-        private void HandleMacroControls(bool controllerConnected, Gamepad gamepad, long currentTime)
-        {
-            if (_macroSystem == null)
+            if (_macroSystem == null || _input == null)
                 return;
 
             // Check if hotkey enable button is pressed
-            bool hotkeyEnablePressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyEnable);
+            bool hotkeyEnablePressed = _input.IsButtonPressed(_config.HotkeyEnable);
 
             // Check each configurable button
-            bool quitPressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyQuit);
-            bool recordPressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyMacroRecord);
-            bool playOncePressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyMacroPlayOnce);
-            bool loopPressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeyMacroLoop);
-            bool sendHomePressed = IsButtonPressed(controllerConnected, gamepad, _config.HotkeySendHome);
+            bool quitPressed = _input.IsButtonPressed(_config.HotkeyQuit);
+            bool recordPressed = _input.IsButtonPressed(_config.HotkeyMacroRecord);
+            bool playOncePressed = _input.IsButtonPressed(_config.HotkeyMacroPlayOnce);
+            bool loopPressed = _input.IsButtonPressed(_config.HotkeyMacroLoop);
+            bool sendHomePressed = _input.IsButtonPressed(_config.HotkeySendHome);
 
             // Exit combo
             if (hotkeyEnablePressed && quitPressed)
@@ -421,7 +404,7 @@ namespace SwitchController
             _lastButtonStates[_config.HotkeySendHome] = sendHomePressed;
         }
 
-        private ControllerState BuildCurrentState(Gamepad gamepad, long currentTime)
+        private ControllerState BuildCurrentState(long currentTime, bool focused)
         {
             if (_macroSystem != null && (_macroSystem.IsPlaying || _macroSystem.IsLooping))
             {
@@ -440,7 +423,7 @@ namespace SwitchController
                     {
                         // Single playback finished
                         _macroSystem.StopPlayback();
-                        return BuildGamepadState(gamepad);
+                        return BuildLiveState(focused);
                     }
                 }
 
@@ -451,40 +434,66 @@ namespace SwitchController
                 }
             }
 
-            return BuildGamepadState(gamepad);
+            return BuildLiveState(focused);
         }
 
-        private ControllerState BuildGamepadState(Gamepad gamepad)
+        private ControllerState BuildLiveState(bool focused)
         {
-            var state = PacketBuilder.BuildControllerState(gamepad, _forceHomeOnce);
-            _forceHomeOnce = false;
+            // When not focused, send idle input
+            if (!focused)
+            {
+                return ControllerState.Idle;
+            }
+
+            if (_input == null)
+            {
+                return new ControllerState();
+            }
+
+            var state = _input.GetCurrentState();
+
+            // Apply HOME button if requested by hotkey
+            if (_forceHomeOnce)
+            {
+                state.Buttons1 |= (byte)(BTN_HOME >> 8);
+                _forceHomeOnce = false;
+            }
+
             return state;
         }
 
-        private void UpdateStatusDisplay(Gamepad gamepad)
+        private void UpdateStatusDisplay(bool focused)
         {
-            string status = "";
+            string status = "Running";
 
             if (_macroSystem != null)
             {
                 if (_macroSystem.IsRecording)
-                    status = $" [RECORDING: {_macroSystem.FrameCount} frames]";
+                    status = $"RECORDING: {_macroSystem.FrameCount} frames";
                 else if (_macroSystem.IsLooping)
-                    status = $" [LOOPING: {_macroSystem.PlaybackIndex}/{_macroSystem.FrameCount}]";
+                    status = $"LOOPING: {_macroSystem.PlaybackIndex}/{_macroSystem.FrameCount}";
                 else if (_macroSystem.IsPlaying)
-                    status = $" [PLAYING: {_macroSystem.PlaybackIndex}/{_macroSystem.FrameCount}]";
+                    status = $"PLAYING: {_macroSystem.PlaybackIndex}/{_macroSystem.FrameCount}";
                 else if (_macroSystem.FrameCount > 0)
-                    status = $" [Macro ready: {_macroSystem.FrameCount} frames]";
+                    status = $"Macro ready: {_macroSystem.FrameCount} frames";
             }
 
-            LogStatus(
-                $"Btn:{gamepad.Buttons,-18} LT:{gamepad.LeftTrigger,3} RT:{gamepad.RightTrigger,3} " +
-                $"LX:{gamepad.LeftThumbX,6} LY:{gamepad.LeftThumbY,6} RX:{gamepad.RightThumbX,6} RY:{gamepad.RightThumbY,6}{status}"
-            );
+            if (!focused)
+            {
+                status += " [PAUSED - unfocused]";
+            }
+
+            // Only log when status actually changes
+            if (status != _lastStatus)
+            {
+                _lastStatus = status;
+                LogStatus(status);
+            }
         }
 
         private void Cleanup()
         {
+            _input?.Dispose();
             _companionAppManager?.Dispose();
             _transport?.Dispose();
             _serial?.Dispose();

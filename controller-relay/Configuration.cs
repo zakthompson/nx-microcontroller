@@ -52,6 +52,11 @@ namespace SwitchController
         public string ControllerType { get; set; } = "wireless-pro";
 
         /// <summary>
+        /// Input backend: "xinput" (default) or "sdl2"
+        /// </summary>
+        public string InputBackend { get; set; } = "xinput";
+
+        /// <summary>
         /// Hotkey enable button (must be held with other buttons for hotkey combos)
         /// </summary>
         public SwitchButton HotkeyEnable { get; set; } = SwitchButton.LS;
@@ -152,6 +157,11 @@ namespace SwitchController
                         config.ControllerType = UnquoteValue(ctrlTypeStr).ToLowerInvariant();
                         Console.WriteLine($"  Controller type: {config.ControllerType}");
                     }
+                    else if (TryParseConfigLine(trimmed, "InputBackend=", out string? inputBackendStr) && inputBackendStr != null)
+                    {
+                        config.InputBackend = UnquoteValue(inputBackendStr).ToLowerInvariant();
+                        Console.WriteLine($"  Input backend: {config.InputBackend}");
+                    }
                     else if (TryParseConfigLine(trimmed, "HotkeyEnable=", out string? hotkeyEnableStr) && TryParseButton(hotkeyEnableStr, out var hotkeyEnable))
                     {
                         config.HotkeyEnable = hotkeyEnable;
@@ -241,6 +251,7 @@ namespace SwitchController
                     writer.WriteLine($"AutoClickRelative={AutoClickRelative}");
                     writer.WriteLine($"FirmwareType=\"{FirmwareType}\"");
                     writer.WriteLine($"ControllerType=\"{ControllerType}\"");
+                    writer.WriteLine($"InputBackend=\"{InputBackend}\"");
 
                     writer.WriteLine();
                     writer.WriteLine("# Hotkeys");

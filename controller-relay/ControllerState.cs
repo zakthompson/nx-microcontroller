@@ -13,6 +13,20 @@ namespace SwitchController
         public byte LX, LY, RX, RY;  // stick axes (0x00-0xFF, 0x80 = center)
 
         /// <summary>
+        /// Returns a neutral idle state (no buttons pressed, sticks centered)
+        /// </summary>
+        public static ControllerState Idle => new ControllerState
+        {
+            Buttons0 = 0,
+            Buttons1 = 0,
+            Dpad = HAT_NEUTRAL,
+            LX = AXIS_CENTER,
+            LY = AXIS_CENTER,
+            RX = AXIS_CENTER,
+            RY = AXIS_CENTER
+        };
+
+        /// <summary>
         /// Converts to the 8-byte native wire packet [buttons1, buttons0, dpad, LX, LY, RX, RY, 0x00]
         /// </summary>
         public byte[] ToNativePacket()
