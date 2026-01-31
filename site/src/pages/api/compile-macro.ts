@@ -5,6 +5,11 @@ import { writeFile, readFile, mkdir, rm, cp } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
+import {
+  parseMacroFrontmatter,
+  applyMacroConfig,
+  type MacroConfigOption,
+} from '../../lib/macro-frontmatter';
 
 const execAsync = promisify(exec);
 
@@ -15,6 +20,8 @@ interface CompileRequest {
   mcu?: string; // Only for AVR
   loop: boolean;
   savedMacros: Record<string, string>;
+  config?: MacroConfigOption[];
+  configValues?: Record<string, string | number>;
 }
 
 export const POST: APIRoute = async ({ request }) => {
@@ -22,7 +29,16 @@ export const POST: APIRoute = async ({ request }) => {
 
   try {
     const body: CompileRequest = await request.json();
-    const { macroText, macroName, platform, mcu, loop, savedMacros } = body;
+    const {
+      macroText,
+      macroName,
+      platform,
+      mcu,
+      loop,
+      savedMacros,
+      config: clientConfig,
+      configValues,
+    } = body;
 
     if (!macroText || !macroName) {
       return new Response(
@@ -44,18 +60,24 @@ export const POST: APIRoute = async ({ request }) => {
     if (platform === 'avr') {
       const validMCUs = ['atmega16u2', 'at90usb1286', 'atmega32u4'];
       if (!mcu || !validMCUs.includes(mcu)) {
-        return new Response(JSON.stringify({ message: 'Invalid MCU type for AVR platform' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({ message: 'Invalid MCU type for AVR platform' }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
       }
     } else if (platform === 'pico') {
       const validBoards = ['pico', 'pico_w', 'pico2', 'pico2_w'];
       if (!mcu || !validBoards.includes(mcu)) {
-        return new Response(JSON.stringify({ message: 'Invalid board type for Pico platform' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({ message: 'Invalid board type for Pico platform' }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
       }
     }
 
@@ -74,10 +96,36 @@ export const POST: APIRoute = async ({ request }) => {
     const macrosDir = join(tempBuildDir, 'macros');
     await mkdir(macrosDir, { recursive: true });
 
+    // Apply config substitutions if present
+    // Prefer client-provided config (frontmatter is already stripped by get-macro),
+    // fall back to parsing frontmatter from the text (e.g. custom editor)
+    const parsed = parseMacroFrontmatter(macroText);
+    const config = clientConfig ?? parsed.config;
+    let resolvedMacro = parsed.body;
+
+    if (config.length > 0) {
+      try {
+        resolvedMacro = applyMacroConfig(
+          resolvedMacro,
+          config,
+          configValues ?? {}
+        );
+      } catch (error) {
+        return new Response(
+          JSON.stringify({
+            message:
+              error instanceof Error
+                ? error.message
+                : 'Config substitution failed',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // Resolve includes
-    let resolvedMacro = macroText;
-    const includePattern = /@([a-zA-Z0-9_-]+)(?:,\*(\d+))?/g;
-    const matches = Array.from(macroText.matchAll(includePattern));
+    const includePattern = /@([a-zA-Z0-9_-]+)(?:\.macro)?(?:,\*(\d+))?/g;
+    const matches = Array.from(resolvedMacro.matchAll(includePattern));
 
     for (const match of matches) {
       const [fullMatch, includeName, loopCount] = match;
@@ -107,11 +155,31 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Platform-specific build logic
     if (platform === 'avr') {
-      return await buildAVR(tempBuildDir, sourceFirmwareDir, macroPath, macroName, mcu!, loop);
+      return await buildAVR(
+        tempBuildDir,
+        sourceFirmwareDir,
+        macroPath,
+        macroName,
+        mcu!,
+        loop
+      );
     } else if (platform === 'pico') {
-      return await buildPico(tempBuildDir, sourceFirmwareDir, macroPath, macroName, mcu!, loop);
+      return await buildPico(
+        tempBuildDir,
+        sourceFirmwareDir,
+        macroPath,
+        macroName,
+        mcu!,
+        loop
+      );
     } else if (platform === 'esp32s3') {
-      return await buildESP32S3(tempBuildDir, sourceFirmwareDir, macroPath, macroName, loop);
+      return await buildESP32S3(
+        tempBuildDir,
+        sourceFirmwareDir,
+        macroPath,
+        macroName,
+        loop
+      );
     }
 
     throw new Error('Invalid platform');
@@ -166,14 +234,23 @@ async function buildAVR(
   }
 
   // Copy LUFA and Config directories
-  await cp(join(sourceFirmwareDir, 'LUFA'), join(tempBuildDir, 'LUFA'), { recursive: true });
-  await cp(join(avrSourceDir, 'Config'), join(tempBuildDir, 'Config'), { recursive: true });
+  await cp(join(sourceFirmwareDir, 'LUFA'), join(tempBuildDir, 'LUFA'), {
+    recursive: true,
+  });
+  await cp(join(avrSourceDir, 'Config'), join(tempBuildDir, 'Config'), {
+    recursive: true,
+  });
 
   // Copy shared directory
-  await cp(join(sourceFirmwareDir, 'shared'), join(tempBuildDir, 'shared'), { recursive: true });
+  await cp(join(sourceFirmwareDir, 'shared'), join(tempBuildDir, 'shared'), {
+    recursive: true,
+  });
 
   // Copy macro_to_c.py from firmware root
-  await cp(join(sourceFirmwareDir, 'macro_to_c.py'), join(tempBuildDir, 'macro_to_c.py'));
+  await cp(
+    join(sourceFirmwareDir, 'macro_to_c.py'),
+    join(tempBuildDir, 'macro_to_c.py')
+  );
 
   // Generate embedded_macro.h
   const pythonCmd = `python3 "${join(tempBuildDir, 'macro_to_c.py')}" "${macroPath}" ${loop ? '--loop' : ''} -o "${join(tempBuildDir, 'embedded_macro.h')}"`;
@@ -218,11 +295,18 @@ async function buildPico(
   console.log(`Building for Pico platform (board: ${board})...`);
 
   // Copy Pico firmware and shared directories
-  await cp(join(sourceFirmwareDir, 'pico'), join(tempBuildDir, 'pico'), { recursive: true });
-  await cp(join(sourceFirmwareDir, 'shared'), join(tempBuildDir, 'shared'), { recursive: true });
+  await cp(join(sourceFirmwareDir, 'pico'), join(tempBuildDir, 'pico'), {
+    recursive: true,
+  });
+  await cp(join(sourceFirmwareDir, 'shared'), join(tempBuildDir, 'shared'), {
+    recursive: true,
+  });
 
   // Copy macro_to_c.py
-  await cp(join(sourceFirmwareDir, 'macro_to_c.py'), join(tempBuildDir, 'macro_to_c.py'));
+  await cp(
+    join(sourceFirmwareDir, 'macro_to_c.py'),
+    join(tempBuildDir, 'macro_to_c.py')
+  );
 
   // Generate embedded_macro.h in pico directory
   const pythonCmd = `python3 "${join(tempBuildDir, 'macro_to_c.py')}" "${macroPath}" ${loop ? '--loop' : ''} -o "${join(tempBuildDir, 'pico', 'embedded_macro.h')}"`;
@@ -270,11 +354,18 @@ async function buildESP32S3(
   console.log('Building for ESP32-S3 platform...');
 
   // Copy ESP32-S3 firmware and shared directories
-  await cp(join(sourceFirmwareDir, 'esp32s3'), join(tempBuildDir, 'esp32s3'), { recursive: true });
-  await cp(join(sourceFirmwareDir, 'shared'), join(tempBuildDir, 'shared'), { recursive: true });
+  await cp(join(sourceFirmwareDir, 'esp32s3'), join(tempBuildDir, 'esp32s3'), {
+    recursive: true,
+  });
+  await cp(join(sourceFirmwareDir, 'shared'), join(tempBuildDir, 'shared'), {
+    recursive: true,
+  });
 
   // Copy macro_to_c.py
-  await cp(join(sourceFirmwareDir, 'macro_to_c.py'), join(tempBuildDir, 'macro_to_c.py'));
+  await cp(
+    join(sourceFirmwareDir, 'macro_to_c.py'),
+    join(tempBuildDir, 'macro_to_c.py')
+  );
 
   // Generate embedded_macro.h in esp32s3/main directory
   const pythonCmd = `python3 "${join(tempBuildDir, 'macro_to_c.py')}" "${macroPath}" ${loop ? '--loop' : ''} -o "${join(tempBuildDir, 'esp32s3', 'main', 'embedded_macro.h')}"`;
@@ -290,7 +381,10 @@ async function buildESP32S3(
   const buildCmd = `cd "${esp32Dir}" && . $IDF_PATH/export.sh && idf.py set-target esp32s3 && idf.py build 2>&1`;
 
   try {
-    await execAsync(buildCmd, { shell: '/bin/bash', maxBuffer: 10 * 1024 * 1024 });
+    await execAsync(buildCmd, {
+      shell: '/bin/bash',
+      maxBuffer: 10 * 1024 * 1024,
+    });
   } catch (error) {
     // Try to read ESP-IDF's log files for more detail
     const err = error as { stderr?: string; stdout?: string; message?: string };
@@ -298,14 +392,19 @@ async function buildESP32S3(
     try {
       const { readdir } = await import('fs/promises');
       const logFiles = await readdir(buildLogDir);
-      const stderrLog = logFiles.find(f => f.includes('stderr'));
+      const stderrLog = logFiles.find((f) => f.includes('stderr'));
       if (stderrLog) {
-        const logContent = await readFile(join(buildLogDir, stderrLog), 'utf-8');
+        const logContent = await readFile(
+          join(buildLogDir, stderrLog),
+          'utf-8'
+        );
         if (logContent.trim()) {
           err.stderr = (err.stderr || '') + '\n' + logContent;
         }
       }
-    } catch { /* log dir may not exist */ }
+    } catch {
+      /* log dir may not exist */
+    }
     return handleBuildError(error, tempBuildDir, buildCmd);
   }
 
@@ -347,9 +446,14 @@ function handleValidationError(error: unknown): Response {
   );
 }
 
-function handleBuildError(error: unknown, tempBuildDir: string, cmd: string): Response {
+function handleBuildError(
+  error: unknown,
+  tempBuildDir: string,
+  cmd: string
+): Response {
   const err = error as { stderr?: string; stdout?: string; message?: string };
-  const buildOutput = err.stderr || err.stdout || err.message || 'Unknown build error';
+  const buildOutput =
+    err.stderr || err.stdout || err.message || 'Unknown build error';
 
   console.error('Build failed. Full output:', buildOutput);
   console.error('Build dir:', tempBuildDir);
@@ -384,7 +488,8 @@ function handleBuildError(error: unknown, tempBuildDir: string, cmd: string): Re
   if (isSystemError) {
     return new Response(
       JSON.stringify({
-        message: 'Oops! Something went wrong on our side. Please try again later.',
+        message:
+          'Oops! Something went wrong on our side. Please try again later.',
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
