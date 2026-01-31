@@ -21,6 +21,7 @@ namespace SwitchController
         // Controller configuration
         private readonly uint _controllerId;
         private readonly bool _useOemFormat;
+        private readonly bool _resetMode;
         private readonly int _sendIntervalMs;
         private readonly ushort _commandDurationMs;
 
@@ -29,10 +30,17 @@ namespace SwitchController
         private readonly Dictionary<uint, (byte[] message, long sentAtMs)> _inFlightMessages = new Dictionary<uint, (byte[], long)>();
 
 
-        public PABotBaseTransport(uint controllerId = PA_CID_NS1_WIRELESS_PRO_CONTROLLER)
+        /// <param name="controllerId">PA controller type ID</param>
+        /// <param name="resetMode">
+        /// When true, sends RESET_TO_CONTROLLER (0x49) instead of CHANGE_CONTROLLER_MODE (0x48)
+        /// during handshake. This wipes pairing state and puts the virtual controller into
+        /// discoverable mode so the Switch can pair with it.
+        /// </param>
+        public PABotBaseTransport(uint controllerId = PA_CID_NS1_WIRELESS_PRO_CONTROLLER, bool resetMode = false)
         {
             _controllerId = controllerId;
             _useOemFormat = IsOemController(controllerId);
+            _resetMode = resetMode;
             bool isWireless = (controllerId & 0x80) != 0;
             _sendIntervalMs = isWireless ? PA_SEND_INTERVAL_WIRELESS_MS : PA_SEND_INTERVAL_WIRED_MS;
             _commandDurationMs = isWireless ? PA_COMMAND_DURATION_WIRELESS_MS : PA_COMMAND_DURATION_WIRED_MS;
@@ -70,10 +78,12 @@ namespace SwitchController
                 }
                 Console.WriteLine("OK");
 
-                // Set controller mode
+                // Set controller mode (reset mode wipes pairing for wireless discovery)
                 string controllerName = ControllerTypeName(_controllerId);
-                Console.Write($"  Setting controller mode ({controllerName})... ");
-                if (!SetControllerMode(_controllerId))
+                string modeVerb = _resetMode ? "Resetting to" : "Setting";
+                Console.Write($"  {modeVerb} controller mode ({controllerName})... ");
+                byte modeMsg = _resetMode ? PA_MSG_RESET_TO_CONTROLLER : PA_MSG_CHANGE_CONTROLLER_MODE;
+                if (!SetControllerMode(_controllerId, modeMsg))
                 {
                     Console.WriteLine("no ACK (controller mode change failed)");
                     return false;
@@ -233,7 +243,7 @@ namespace SwitchController
             return WaitForAck(2000);
         }
 
-        private bool SetControllerMode(uint controllerId)
+        private bool SetControllerMode(uint controllerId, byte messageType = PA_MSG_CHANGE_CONTROLLER_MODE)
         {
             if (_port == null) return false;
 
@@ -242,7 +252,7 @@ namespace SwitchController
             BitConverter.GetBytes(seqnum).CopyTo(payload, 0);
             BitConverter.GetBytes(controllerId).CopyTo(payload, 4);
 
-            byte[] message = FrameMessage(PA_MSG_CHANGE_CONTROLLER_MODE, payload);
+            byte[] message = FrameMessage(messageType, payload);
             _port.Write(message, 0, message.Length);
 
             return WaitForAck(2000);

@@ -38,6 +38,7 @@ namespace SwitchController
 
         // Action controls
         private Button _connectButton = null!;
+        private Button _pairButton = null!;
 
         // Status controls
         private TextBox _statusTextBox = null!;
@@ -48,6 +49,7 @@ namespace SwitchController
             _config = Configuration.Load();
             PopulateFormFromConfig();
             PopulateComPorts();
+            UpdatePairButtonVisibility();
         }
 
         private void InitializeComponent()
@@ -113,6 +115,7 @@ namespace SwitchController
             };
             _controllerTypeCombo.Items.AddRange(new[] { "Wireless Pro", "Wired Pro", "Wired" });
             _controllerTypeCombo.SelectedIndex = 0;
+            _controllerTypeCombo.SelectedIndexChanged += (s, e) => UpdatePairButtonVisibility();
             connectionGroup.Controls.Add(_controllerTypeCombo);
 
             y += 90;
@@ -233,17 +236,28 @@ namespace SwitchController
 
             y += 100;
 
-            // Connect button
+            // Connect and Pair buttons
             _connectButton = new Button
             {
                 Text = "Connect",
-                Left = 250,
+                Left = 200,
                 Top = y,
                 Width = 100,
                 Height = 30
             };
             _connectButton.Click += ConnectButton_Click;
             Controls.Add(_connectButton);
+
+            _pairButton = new Button
+            {
+                Text = "Pair",
+                Left = 310,
+                Top = y,
+                Width = 100,
+                Height = 30
+            };
+            _pairButton.Click += PairButton_Click;
+            Controls.Add(_pairButton);
 
             y += 40;
 
@@ -412,11 +426,30 @@ namespace SwitchController
             }
             else
             {
-                StartSession();
+                StartSession(pairMode: false);
             }
         }
 
-        private void StartSession()
+        private void PairButton_Click(object? sender, EventArgs e)
+        {
+            if (_session?.IsRunning == true)
+            {
+                StopSession();
+            }
+            else
+            {
+                StartSession(pairMode: true);
+            }
+        }
+
+        private void UpdatePairButtonVisibility()
+        {
+            // Pair is only meaningful for wireless controller types (PABotBase firmware)
+            bool isWireless = _controllerTypeCombo.SelectedIndex == 0; // "Wireless Pro"
+            _pairButton.Visible = isWireless;
+        }
+
+        private void StartSession(bool pairMode)
         {
             // Validate inputs
             if (_comPortCombo.SelectedItem == null)
@@ -482,14 +515,23 @@ namespace SwitchController
             _statusTextBox.Clear();
 
             // Create and start session
-            _session = new RelaySession(_config, portName);
+            _session = new RelaySession(_config, portName, pairMode);
             _session.StatusUpdate += Session_StatusUpdate;
             _session.SessionStopped += Session_SessionStopped;
             _session.Start();
 
-            // Update UI
+            // Update UI — show only the active button as "Stop"
             SetControlsEnabled(false);
-            _connectButton.Text = "Stop";
+            if (pairMode)
+            {
+                _connectButton.Visible = false;
+                _pairButton.Text = "Stop";
+            }
+            else
+            {
+                _pairButton.Visible = false;
+                _connectButton.Text = "Stop";
+            }
         }
 
         private void StopSession()
@@ -498,7 +540,10 @@ namespace SwitchController
             _session = null;
 
             SetControlsEnabled(true);
+            _connectButton.Visible = true;
             _connectButton.Text = "Connect";
+            _pairButton.Text = "Pair";
+            UpdatePairButtonVisibility();
         }
 
         private void SetControlsEnabled(bool enabled)
@@ -507,6 +552,7 @@ namespace SwitchController
             _refreshPortsButton.Enabled = enabled;
             _firmwareCombo.Enabled = enabled;
             _controllerTypeCombo.Enabled = enabled;
+            if (enabled) UpdatePairButtonVisibility();
             _companionPathTextBox.Enabled = enabled;
             _browseButton.Enabled = enabled;
             _clickXTextBox.Enabled = enabled;
@@ -541,7 +587,10 @@ namespace SwitchController
             }
 
             SetControlsEnabled(true);
+            _connectButton.Visible = true;
             _connectButton.Text = "Connect";
+            _pairButton.Text = "Pair";
+            UpdatePairButtonVisibility();
             AppendStatus("Session stopped");
         }
 

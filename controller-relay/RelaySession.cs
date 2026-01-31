@@ -14,6 +14,7 @@ namespace SwitchController
     {
         private readonly Configuration _config;
         private readonly string _portName;
+        private readonly bool _pairMode;
         private SerialConnection? _serial;
         private IControllerTransport? _transport;
         private MacroSystem? _macroSystem;
@@ -41,10 +42,15 @@ namespace SwitchController
         /// </summary>
         public bool IsRunning => _running;
 
-        public RelaySession(Configuration config, string portName)
+        /// <param name="pairMode">
+        /// When true, sends RESET_TO_CONTROLLER during handshake to wipe pairing
+        /// state and put the virtual controller into discoverable mode.
+        /// </param>
+        public RelaySession(Configuration config, string portName, bool pairMode = false)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _portName = portName ?? throw new ArgumentNullException(nameof(portName));
+            _pairMode = pairMode;
         }
 
         /// <summary>
@@ -160,8 +166,9 @@ namespace SwitchController
 
             if (firmwareType == "pabotbase")
             {
-                LogStatus($"Connecting with PABotBase firmware ({SwitchControllerConstants.ControllerTypeName(controllerId)})...");
-                return TryConnect(new PABotBaseTransport(controllerId), serial, "PABotBase");
+                string mode = _pairMode ? " (pair mode)" : "";
+                LogStatus($"Connecting with PABotBase firmware ({SwitchControllerConstants.ControllerTypeName(controllerId)}{mode})...");
+                return TryConnect(new PABotBaseTransport(controllerId, _pairMode), serial, "PABotBase");
             }
 
             // Auto-detect
@@ -178,7 +185,7 @@ namespace SwitchController
                 native.Dispose();
 
                 LogStatus($"Trying PABotBase handshake ({SwitchControllerConstants.ControllerTypeName(controllerId)})...");
-                var pa = new PABotBaseTransport(controllerId);
+                var pa = new PABotBaseTransport(controllerId, _pairMode);
                 if (pa.Connect(serial.Port))
                 {
                     LogStatus("Connected with PABotBase firmware.");

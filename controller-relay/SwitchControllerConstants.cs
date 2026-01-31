@@ -66,6 +66,7 @@ namespace SwitchController
         public const byte PA_MSG_SEQNUM_RESET = 0x40;
         public const byte PA_MSG_READ_CONTROLLER_MODE = 0x47;
         public const byte PA_MSG_CHANGE_CONTROLLER_MODE = 0x48;
+        public const byte PA_MSG_RESET_TO_CONTROLLER = 0x49;
         public const byte PA_MSG_REQUEST_STOP = 0x4b;
         public const byte PA_MSG_WIRED_CONTROLLER_STATE = 0x90;
         public const byte PA_MSG_OEM_CONTROLLER_BUTTONS = 0xa0;
