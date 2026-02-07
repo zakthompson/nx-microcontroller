@@ -98,6 +98,21 @@ AutoClickY=20
 AutoClickDelay=2000        # Milliseconds to wait before clicking
 AutoClickRelative=true     # Coordinates relative to window (not screen)
 
+# Firmware type: auto (default), native, or pabotbase
+# - auto: tries native handshake first, then PABotBase
+# - native: original UART relay firmware (3-step sync + CRC8)
+# - pabotbase: PokemonAutomation PABotBase firmware (CRC32C + sequence numbers)
+FirmwareType=auto
+
+# Controller type to emulate when using PABotBase firmware (default: wireless-pro)
+# Nintendo Switch 1:
+#   wired, wired-pro, wired-left-joycon, wired-right-joycon,
+#   wireless-pro, wireless-left-joycon, wireless-right-joycon
+# Nintendo Switch 2:
+#   ns2-wired, ns2-wired-pro, ns2-wired-left-joycon, ns2-wired-right-joycon,
+#   ns2-wireless-pro, ns2-wireless-left-joycon, ns2-wireless-right-joycon
+ControllerType=wireless-pro
+
 # Customize hotkeys (button names: Y, B, A, X, L, R, ZL, ZR, LS, RS, Plus, Minus, Home, Capture)
 HotkeyEnable=LS           # Enable button (must be held with others)
 HotkeySendHome=Plus       # LS + Plus = Send HOME

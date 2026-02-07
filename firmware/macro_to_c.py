@@ -370,7 +370,17 @@ def json_to_c_header(macro_file: str, loop_macro: bool = False) -> str:
     output.append("#define EMBEDDED_MACRO_H")
     output.append("")
     output.append("#include <stdint.h>")
+    output.append("#include <string.h>")
+    output.append("")
+    output.append("// Platform-specific PROGMEM handling")
+    output.append("#ifdef __AVR__")
     output.append("#include <avr/pgmspace.h>")
+    output.append("#define MACRO_STORAGE PROGMEM")
+    output.append("#define MACRO_READ_FRAME(index, dest) memcpy_P(dest, &embedded_macro_frames[index], sizeof(EmbeddedMacroFrame_t))")
+    output.append("#else")
+    output.append("#define MACRO_STORAGE")
+    output.append("#define MACRO_READ_FRAME(index, dest) memcpy(dest, &embedded_macro_frames[index], sizeof(EmbeddedMacroFrame_t))")
+    output.append("#endif")
     output.append("")
 
     # Configuration
@@ -386,16 +396,19 @@ def json_to_c_header(macro_file: str, loop_macro: bool = False) -> str:
     output.append(f"// Macro duration: {duration_sec:.2f} seconds ({len(frames)} frames)")
     output.append("")
 
-    # Frame structure
+    # Frame structure (only define if not already defined by macro_player.h)
+    output.append("#ifndef EMBEDDED_MACRO_FRAME_T_DEFINED")
+    output.append("#define EMBEDDED_MACRO_FRAME_T_DEFINED")
     output.append("typedef struct {")
     output.append("    uint32_t timestamp_ms;  // Timestamp in milliseconds")
     output.append("    uint8_t packet[8];      // 8-byte input report")
     output.append("} EmbeddedMacroFrame_t;")
+    output.append("#endif")
     output.append("")
 
-    # Frame data in PROGMEM
-    output.append("// Macro frames stored in program memory (PROGMEM)")
-    output.append("const EmbeddedMacroFrame_t embedded_macro_frames[] PROGMEM = {")
+    # Frame data with platform-specific storage
+    output.append("// Macro frames (stored in PROGMEM on AVR, regular const on other platforms)")
+    output.append("static const EmbeddedMacroFrame_t embedded_macro_frames[] MACRO_STORAGE = {")
 
     for i, frame in enumerate(frames):
         timestamp = frame['TimestampMs']

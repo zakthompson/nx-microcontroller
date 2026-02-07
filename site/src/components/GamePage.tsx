@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import BotSelector from './BotSelector';
 import MacroSelector from './MacroSelector';
-import McuSelector from './McuSelector';
+import PlatformSelector from './PlatformSelector';
 import InstructionsDisplay from './InstructionsDisplay';
 import Header from './Header';
+import type { MacroConfigOption } from '../lib/macro-frontmatter';
 
 interface GamePageProps {
   gameId: string;
@@ -23,6 +24,8 @@ interface MacroOption {
 interface MacroData {
   content: string;
   instructions: string;
+  config: MacroConfigOption[];
+  includeMacros: Record<string, string>;
 }
 
 export default function GamePage({ gameId, gameTitle }: GamePageProps) {
@@ -31,8 +34,12 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
   const [macros, setMacros] = useState<MacroOption[]>([]);
   const [selectedMacro, setSelectedMacro] = useState<string | null>(null);
   const [macroData, setMacroData] = useState<MacroData | null>(null);
+  const [platform, setPlatform] = useState('avr');
   const [mcu, setMcu] = useState('atmega16u2');
   const [isCompiling, setIsCompiling] = useState(false);
+  const [configValues, setConfigValues] = useState<
+    Record<string, string | number>
+  >({});
   const [isLoading, setIsLoading] = useState(true);
   const [shouldAutoSelect, setShouldAutoSelect] = useState(false);
 
@@ -50,7 +57,9 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
         if (data.bots) {
           const botOptions = data.bots.map((botId: string) => ({
             id: botId,
-            displayName: botId.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+            displayName: botId
+              .replace(/-/g, ' ')
+              .replace(/\b\w/g, (l: string) => l.toUpperCase()),
           }));
           setBots(botOptions);
 
@@ -77,11 +86,12 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
     setSelectedMacro(null);
     setMacroData(null);
     setMacros([]);
+    setConfigValues({});
 
     const loadMacros = async () => {
       try {
         const response = await fetch(
-          `/api/list-macros?game=${gameId}&bot=${selectedBot}`,
+          `/api/list-macros?game=${gameId}&bot=${selectedBot}`
         );
         const data = await response.json();
 
@@ -104,39 +114,29 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
 
   // Load macro data when selection changes
   useEffect(() => {
-    if (!selectedBot || !selectedMacro) {
+    if (!selectedMacro) {
       setMacroData(null);
       return;
     }
 
+    // Don't fetch until the macros list has loaded and contains this macro
+    const macroExists = macros.some((m) => m.filename === selectedMacro);
+    if (!macroExists) {
+      setMacroData(null);
+      return;
+    }
+
+    // Read bot from ref — avoids stale fetches when bot changes but
+    // selectedMacro/macros haven't flushed to null/[] yet
+    const bot = selectionRef.current.bot;
+    if (!bot) return;
+
     const abortController = new AbortController();
 
     const loadMacroData = async () => {
-      const botAtStart = selectedBot;
-      const macroAtStart = selectedMacro;
-
-      // Wait a tick to let the macros state update
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      // Check if selection changed while we waited
-      if (selectionRef.current.bot !== botAtStart || selectionRef.current.macro !== macroAtStart) {
-        return;
-      }
-
-      // Now verify with the current macros array
-      if (macros.length === 0) {
-        return;
-      }
-
-      const macroExists = macros.some((m) => m.filename === macroAtStart);
-      if (!macroExists) {
-        setMacroData(null);
-        return;
-      }
-
       try {
         const response = await fetch(
-          `/api/get-macro?game=${gameId}&bot=${botAtStart}&filename=${macroAtStart}`,
+          `/api/get-macro?game=${gameId}&bot=${bot}&filename=${selectedMacro}`,
           { signal: abortController.signal }
         );
         const data = await response.json();
@@ -144,23 +144,37 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
         // Only update if not aborted and selection hasn't changed
         if (
           !abortController.signal.aborted &&
-          selectionRef.current.bot === botAtStart &&
-          selectionRef.current.macro === macroAtStart &&
+          selectionRef.current.bot === bot &&
+          selectionRef.current.macro === selectedMacro &&
           data.content &&
-          data.instructions
+          data.instructions !== undefined
         ) {
           setMacroData(data);
+
+          // Initialize config defaults
+          const configOptions: MacroConfigOption[] = data.config ?? [];
+          if (configOptions.length > 0) {
+            const defaults: Record<string, string | number> = {};
+            for (const opt of configOptions) {
+              if (opt.type === 'number') {
+                defaults[opt.id] = opt.default;
+              } else if (opt.type === 'dropdown') {
+                defaults[opt.id] = opt.options[0].value;
+              }
+            }
+            setConfigValues(defaults);
+          } else {
+            setConfigValues({});
+          }
         }
       } catch (error: unknown) {
-        // Ignore abort errors
         if (error instanceof Error && error.name === 'AbortError') {
           return;
         }
 
-        // Only log if the selection is still the same (not a stale request)
         if (
-          selectionRef.current.bot === botAtStart &&
-          selectionRef.current.macro === macroAtStart
+          selectionRef.current.bot === bot &&
+          selectionRef.current.macro === selectedMacro
         ) {
           console.error('Failed to load macro data:', error);
         }
@@ -169,11 +183,10 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
 
     loadMacroData();
 
-    // Cleanup: abort the fetch if the selection changes
     return () => {
       abortController.abort();
     };
-  }, [selectedBot, selectedMacro, gameId, macros]);
+  }, [selectedMacro, gameId, macros]);
 
   const handleDownload = async () => {
     if (!macroData || !selectedMacro) return;
@@ -187,9 +200,12 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
         body: JSON.stringify({
           macroText: macroData.content,
           macroName: selectedMacro.replace('.macro', ''),
-          mcu,
+          platform,
+          mcu: platform === 'avr' || platform === 'pico' ? mcu : undefined,
           loop: true,
-          savedMacros: {},
+          savedMacros: macroData.includeMacros ?? {},
+          config: macroData.config,
+          configValues,
         }),
       });
 
@@ -203,7 +219,12 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = selectedMacro.replace('.macro', '.hex');
+
+      // Determine file extension based on platform
+      const ext =
+        platform === 'avr' ? '.hex' : platform === 'pico' ? '.uf2' : '.bin';
+      a.download = selectedMacro.replace('.macro', ext);
+
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -249,7 +270,12 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
                 selectedBot={selectedBot}
                 onSelectBot={setSelectedBot}
               />
-              <McuSelector selectedMcu={mcu} onSelectMcu={setMcu} />
+              <PlatformSelector
+                selectedPlatform={platform}
+                onSelectPlatform={setPlatform}
+                selectedMcu={mcu}
+                onSelectMcu={setMcu}
+              />
             </div>
           </aside>
 
@@ -275,9 +301,13 @@ export default function GamePage({ gameId, gameTitle }: GamePageProps) {
                   <InstructionsDisplay
                     instructions={macroData.instructions}
                     macroContent={macroData.content}
+                    platform={platform}
                     mcu={mcu}
                     onDownload={handleDownload}
                     isCompiling={isCompiling}
+                    config={macroData.config ?? []}
+                    configValues={configValues}
+                    onConfigChange={setConfigValues}
                   />
                 )}
 

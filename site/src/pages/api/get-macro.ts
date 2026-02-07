@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
+import { parseMacroFrontmatter } from '../../lib/macro-frontmatter';
 
 function parseInstructionsFromMacro(content: string): string | null {
   const lines = content.split('\n');
@@ -43,11 +44,13 @@ export const GET: APIRoute = async ({ request }) => {
 
   if (!game || !bot || !filename) {
     return new Response(
-      JSON.stringify({ error: 'Game, bot, and filename parameters are required' }),
+      JSON.stringify({
+        error: 'Game, bot, and filename parameters are required',
+      }),
       {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
-      },
+      }
     );
   }
 
@@ -59,10 +62,11 @@ export const GET: APIRoute = async ({ request }) => {
       ? join(process.cwd(), 'macros')
       : join(process.cwd(), '..', 'macros');
     const macroPath = join(macrosDir, game, bot, filename);
-    const content = readFileSync(macroPath, 'utf-8');
+    const rawContent = readFileSync(macroPath, 'utf-8');
+    const { config, body } = parseMacroFrontmatter(rawContent);
 
-    // Try to parse instructions from the macro file
-    let instructions = parseInstructionsFromMacro(content);
+    // Try to parse instructions from the macro body (frontmatter-stripped)
+    let instructions = parseInstructionsFromMacro(body);
 
     // If no instructions in macro, fall back to bot-level README.md
     if (!instructions) {
@@ -72,15 +76,31 @@ export const GET: APIRoute = async ({ request }) => {
       }
     }
 
+    // Load .macro files from the game-level includes/ directory so the
+    // compile endpoint can resolve @../includes/... references
+    const includeMacros: Record<string, string> = {};
+    const includesDir = join(macrosDir, game, 'includes');
+    if (existsSync(includesDir)) {
+      const files = readdirSync(includesDir).filter((f) =>
+        f.endsWith('.macro')
+      );
+      for (const file of files) {
+        const name = file.replace(/\.macro$/, '');
+        includeMacros[name] = readFileSync(join(includesDir, file), 'utf-8');
+      }
+    }
+
     return new Response(
       JSON.stringify({
-        content,
+        content: body,
         instructions: instructions || '',
+        config,
+        includeMacros,
       }),
       {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
-      },
+      }
     );
   } catch (error) {
     console.error('Error reading macro:', error);
@@ -89,7 +109,7 @@ export const GET: APIRoute = async ({ request }) => {
       {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
-      },
+      }
     );
   }
 };

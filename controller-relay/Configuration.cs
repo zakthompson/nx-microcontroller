@@ -9,6 +9,11 @@ namespace SwitchController
     public class Configuration
     {
         /// <summary>
+        /// Last-used COM port name (e.g., "COM3")
+        /// </summary>
+        public string? ComPort { get; set; }
+
+        /// <summary>
         /// Path to companion application to launch alongside controller-relay
         /// </summary>
         public string? CompanionAppPath { get; set; }
@@ -32,6 +37,24 @@ namespace SwitchController
         /// If true, auto-click coordinates are relative to window; if false, absolute screen coordinates
         /// </summary>
         public bool AutoClickRelative { get; set; } = true;
+
+        /// <summary>
+        /// Firmware type: "auto" (default), "native", or "pabotbase"
+        /// </summary>
+        public string FirmwareType { get; set; } = "auto";
+
+        /// <summary>
+        /// Controller type to emulate when using PABotBase firmware.
+        /// Valid values: wireless-pro (default), wired-pro, wired, wired-left-joycon,
+        /// wired-right-joycon, wireless-left-joycon, wireless-right-joycon,
+        /// and ns2-* variants for Nintendo Switch 2.
+        /// </summary>
+        public string ControllerType { get; set; } = "wireless-pro";
+
+        /// <summary>
+        /// Input backend: "xinput" (default) or "sdl2"
+        /// </summary>
+        public string InputBackend { get; set; } = "xinput";
 
         /// <summary>
         /// Hotkey enable button (must be held with other buttons for hotkey combos)
@@ -93,7 +116,12 @@ namespace SwitchController
                     if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#"))
                         continue;
 
-                    if (TryParseConfigLine(trimmed, "CompanionApp=", out string? appPath))
+                    if (TryParseConfigLine(trimmed, "ComPort=", out string? comPort))
+                    {
+                        config.ComPort = UnquoteValue(comPort);
+                        Console.WriteLine($"  COM port: {config.ComPort}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "CompanionApp=", out string? appPath))
                     {
                         config.CompanionAppPath = UnquoteValue(appPath);
                         Console.WriteLine($"  Companion app: {config.CompanionAppPath}");
@@ -118,6 +146,21 @@ namespace SwitchController
                         string val = relStr.ToLowerInvariant();
                         config.AutoClickRelative = val == "true" || val == "1" || val == "yes";
                         Console.WriteLine($"  Auto-click relative: {config.AutoClickRelative}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "FirmwareType=", out string? fwTypeStr) && fwTypeStr != null)
+                    {
+                        config.FirmwareType = UnquoteValue(fwTypeStr).ToLowerInvariant();
+                        Console.WriteLine($"  Firmware type: {config.FirmwareType}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "ControllerType=", out string? ctrlTypeStr) && ctrlTypeStr != null)
+                    {
+                        config.ControllerType = UnquoteValue(ctrlTypeStr).ToLowerInvariant();
+                        Console.WriteLine($"  Controller type: {config.ControllerType}");
+                    }
+                    else if (TryParseConfigLine(trimmed, "InputBackend=", out string? inputBackendStr) && inputBackendStr != null)
+                    {
+                        config.InputBackend = UnquoteValue(inputBackendStr).ToLowerInvariant();
+                        Console.WriteLine($"  Input backend: {config.InputBackend}");
                     }
                     else if (TryParseConfigLine(trimmed, "HotkeyEnable=", out string? hotkeyEnableStr) && TryParseButton(hotkeyEnableStr, out var hotkeyEnable))
                     {
@@ -167,6 +210,63 @@ namespace SwitchController
             Console.WriteLine($"  {config.HotkeyEnable} + {config.HotkeyMacroLoop} = Toggle macro loop");
 
             return config;
+        }
+
+        /// <summary>
+        /// Saves configuration to controller-relay.config file in the application directory
+        /// </summary>
+        public void Save()
+        {
+            try
+            {
+                string exeDir = AppContext.BaseDirectory;
+                string configPath = Path.Combine(exeDir, "controller-relay.config");
+
+                using (var writer = new StreamWriter(configPath))
+                {
+                    writer.WriteLine("# Controller Relay Configuration");
+                    writer.WriteLine();
+
+                    if (!string.IsNullOrEmpty(ComPort))
+                    {
+                        writer.WriteLine($"ComPort=\"{ComPort}\"");
+                    }
+
+                    if (!string.IsNullOrEmpty(CompanionAppPath))
+                    {
+                        writer.WriteLine($"CompanionApp=\"{CompanionAppPath}\"");
+                    }
+
+                    if (AutoClickX.HasValue)
+                    {
+                        writer.WriteLine($"AutoClickX={AutoClickX.Value}");
+                    }
+
+                    if (AutoClickY.HasValue)
+                    {
+                        writer.WriteLine($"AutoClickY={AutoClickY.Value}");
+                    }
+
+                    writer.WriteLine($"AutoClickDelay={AutoClickDelay}");
+                    writer.WriteLine($"AutoClickRelative={AutoClickRelative}");
+                    writer.WriteLine($"FirmwareType=\"{FirmwareType}\"");
+                    writer.WriteLine($"ControllerType=\"{ControllerType}\"");
+                    writer.WriteLine($"InputBackend=\"{InputBackend}\"");
+
+                    writer.WriteLine();
+                    writer.WriteLine("# Hotkeys");
+                    writer.WriteLine($"HotkeyEnable={HotkeyEnable}");
+                    writer.WriteLine($"HotkeySendHome={HotkeySendHome}");
+                    writer.WriteLine($"HotkeyQuit={HotkeyQuit}");
+                    writer.WriteLine($"HotkeyMacroRecord={HotkeyMacroRecord}");
+                    writer.WriteLine($"HotkeyMacroPlayOnce={HotkeyMacroPlayOnce}");
+                    writer.WriteLine($"HotkeyMacroLoop={HotkeyMacroLoop}");
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to save config: {ex.Message}", ex);
+            }
         }
 
         /// <summary>

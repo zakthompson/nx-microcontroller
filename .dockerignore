@@ -1,98 +1,53 @@
-# flyctl launch added from .gitignore
-**/.DS_Store
+# Git
+.git
+.gitignore
+.gitattributes
 
-**/*.bin
-**/*.eep
-**/*.hex
-**/*.elf
-**/*.map
-**/*.lss
-**/*.sym
+# Documentation
+*.md
+!README.md
+PLAN.md
+FIRMWARE_MIGRATION.md
+CLAUDE.md
 
-**/controller-relay/bin
-**/controller-relay/obj
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
 
-# NOTE: We need LUFA for firmware compilation, so don't exclude it!
-# **/firmware/LUFA
+# OS files
+.DS_Store
+Thumbs.db
 
-# flyctl launch added from firmware/.gitignore
-firmware/cmake-build-debug
-firmware/.idea
+# Node modules (will be installed in Docker)
+node_modules
 
-# Generated macro files
-firmware/**/embedded_macro.h
-firmware/**/test_macro.json
+# Build outputs (will be built in Docker)
+site/dist
+site/.astro
+firmware/*/build
+firmware/*/obj
+firmware/*/*.hex
+firmware/*/*.elf
+firmware/*/*.bin
+firmware/*/*.map
+firmware/*/*.lss
+firmware/*/*.sym
+firmware/*/*.eep
+firmware/*/*.uf2
 
-# Build outputs
-firmware/**/*.hex
-firmware/**/*.elf
-firmware/**/*.eep
-firmware/**/*.lss
-firmware/**/*.map
-firmware/**/*.sym
-firmware/**/*.o
-firmware/**/*.d
-firmware/**/*.lst
-firmware/**/obj
+# Temporary and generated files
+*.log
+*.tmp
+*.cache
+embedded_macro.h
 
-# flyctl launch added from firmware/LUFA/.gitignore
-firmware/LUFA/**/*.o
-firmware/LUFA/**/*.d
-firmware/LUFA/**/*.elf
-firmware/LUFA/**/*.hex
-firmware/LUFA/**/*.eep
-firmware/LUFA/**/*.sym
-firmware/LUFA/**/*.bin
-firmware/LUFA/**/*.lss
-firmware/LUFA/**/*.map
-firmware/LUFA/**/*.bak
-firmware/LUFA/**/*.class
-firmware/LUFA/**/Documentation
-firmware/LUFA/**/node_modules
+# Controller relay (not needed for web tool)
+controller-relay/bin
+controller-relay/obj
 
-# flyctl launch added from firmware/LUFA/Bootloaders/HID/HostLoaderApp/.gitignore
-firmware/LUFA/Bootloaders/HID/HostLoaderApp/**/hid_bootloader_cli
-
-# flyctl launch added from firmware/LUFA/LUFA/Build/DMBS/.gitignore
-firmware/LUFA/LUFA/Build/DMBS/**/*.lss
-firmware/LUFA/LUFA/Build/DMBS/**/*.bin
-firmware/LUFA/LUFA/Build/DMBS/**/*.elf
-firmware/LUFA/LUFA/Build/DMBS/**/*.hex
-firmware/LUFA/LUFA/Build/DMBS/**/*.eep
-firmware/LUFA/LUFA/Build/DMBS/**/*.map
-firmware/LUFA/LUFA/Build/DMBS/**/*.o
-firmware/LUFA/LUFA/Build/DMBS/**/*.d
-firmware/LUFA/LUFA/Build/DMBS/**/*.sym
-
-# flyctl launch added from firmware/obj/.gitignore
-# Ignore everything in this directory
-firmware/obj/**/*
-# Except this file
-!firmware/obj/**/.gitignore
-
-# flyctl launch added from site/.gitignore
-# build output
-site/**/dist
-# generated types
-site/**/.astro
-
-# dependencies
-site/**/node_modules
-
-# logs
-site/**/npm-debug.log*
-site/**/yarn-debug.log*
-site/**/yarn-error.log*
-site/**/pnpm-debug.log*
-
-
-# environment variables
-site/**/.env
-site/**/.env.production
-
-# macOS-specific files
-site/**/.DS_Store
-
-# jetbrains setting folder
-site/**/.idea
-fly.toml
+# Test files
+*.test.js
+*.spec.js

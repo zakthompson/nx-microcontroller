@@ -1,9 +1,17 @@
 ---
 import '../../styles/global.css';
-import ComingSoon from '../../components/ComingSoon.astro';
+import GamePage from '../../components/GamePage';
 ---
 
-<ComingSoon
-  title="Pokémon Sword & Shield"
-  gradient="bg-gradient-to-br from-cyan-500 to-blue-700"
-/>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>Pokémon Sword & Shield - NX Controller</title>
+  </head>
+  <body>
+    <GamePage gameId="swsh" gameTitle="Pokémon Sword & Shield" client:load />
+  </body>
+</html>
