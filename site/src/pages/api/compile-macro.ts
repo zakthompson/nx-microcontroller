@@ -123,12 +123,17 @@ export const POST: APIRoute = async ({ request }) => {
       }
     }
 
-    // Resolve includes
-    const includePattern = /@([a-zA-Z0-9_-]+)(?:\.macro)?(?:,\*(\d+))?/g;
+    // Resolve includes — handles both simple (@name) and relative path
+    // (@../includes/name.macro) references used by prebuilt macros
+    const includePattern = /@([^\s,]+)(\s*,\s*\*(\d+))?/g;
     const matches = Array.from(resolvedMacro.matchAll(includePattern));
 
     for (const match of matches) {
-      const [fullMatch, includeName, loopCount] = match;
+      const [fullMatch, rawPath, , loopCount] = match;
+      // Extract basename (strip leading path segments and .macro suffix)
+      const includeName = rawPath
+        .replace(/^.*\//, '')
+        .replace(/\.macro$/, '');
       const includedMacro = savedMacros[includeName];
 
       if (!includedMacro) {

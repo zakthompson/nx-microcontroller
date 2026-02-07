@@ -76,19 +76,17 @@ export const GET: APIRoute = async ({ request }) => {
       }
     }
 
-    // When the macro has config options, load .macro files from the
-    // game-level includes/ directory for include resolution at compile time
+    // Load .macro files from the game-level includes/ directory so the
+    // compile endpoint can resolve @../includes/... references
     const includeMacros: Record<string, string> = {};
-    if (config.length > 0) {
-      const includesDir = join(macrosDir, game, 'includes');
-      if (existsSync(includesDir)) {
-        const files = readdirSync(includesDir).filter((f) =>
-          f.endsWith('.macro')
-        );
-        for (const file of files) {
-          const name = file.replace(/\.macro$/, '');
-          includeMacros[name] = readFileSync(join(includesDir, file), 'utf-8');
-        }
+    const includesDir = join(macrosDir, game, 'includes');
+    if (existsSync(includesDir)) {
+      const files = readdirSync(includesDir).filter((f) =>
+        f.endsWith('.macro')
+      );
+      for (const file of files) {
+        const name = file.replace(/\.macro$/, '');
+        includeMacros[name] = readFileSync(join(includesDir, file), 'utf-8');
       }
     }
 
