@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using static SwitchController.SwitchControllerConstants;
 
@@ -256,18 +257,15 @@ namespace SwitchController
 
         private void RunMainLoop()
         {
+            ConfigureLowLatencyScheduling();
+
             var sw = Stopwatch.StartNew();
-            long nextTick = sw.ElapsedMilliseconds;
+            using var timer = new PrecisionTimer();
 
             while (_running)
             {
+                timer.Sleep(UPDATE_INTERVAL_MS);
                 long now = sw.ElapsedMilliseconds;
-                if (now < nextTick)
-                {
-                    Thread.Sleep((int)Math.Max(0, nextTick - now));
-                    continue;
-                }
-                nextTick += UPDATE_INTERVAL_MS;
 
                 // Update input state
                 _input?.Update();
@@ -300,11 +298,11 @@ namespace SwitchController
                     _macroSystem.RecordFrame(sw.ElapsedMilliseconds, controllerState.ToNativePacket());
                 }
 
-                // Send state via transport
+                // Process device responses first so acks and drops are reflected in this send
                 try
                 {
-                    _transport?.SendState(controllerState);
                     _transport?.Update();
+                    _transport?.SendState(controllerState);
                 }
                 catch (Exception ex)
                 {
@@ -316,6 +314,40 @@ namespace SwitchController
                 {
                     UpdateStatusDisplay(focused);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Keeps the relay responsive while another app (e.g. capture software) is in the foreground
+        /// </summary>
+        private void ConfigureLowLatencyScheduling()
+        {
+            try
+            {
+                Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+                Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            }
+            catch (Exception ex)
+            {
+                LogStatus($"Could not raise process priority: {ex.Message}");
+            }
+
+            // Windows throttles background processes and may ignore their timer precision requests;
+            // a set ControlMask bit with a clear StateMask bit opts out of that throttling
+            var throttling = new WindowsNative.PROCESS_POWER_THROTTLING_STATE
+            {
+                Version = WindowsNative.PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+                ControlMask = WindowsNative.PROCESS_POWER_THROTTLING_EXECUTION_SPEED |
+                              WindowsNative.PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,
+                StateMask = 0
+            };
+            if (!WindowsNative.SetProcessInformation(
+                    WindowsNative.GetCurrentProcess(),
+                    WindowsNative.ProcessPowerThrottling,
+                    ref throttling,
+                    (uint)Marshal.SizeOf<WindowsNative.PROCESS_POWER_THROTTLING_STATE>()))
+            {
+                LogStatus($"Could not disable power throttling (error {Marshal.GetLastWin32Error()})");
             }
         }
 

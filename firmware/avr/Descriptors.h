@@ -15,6 +15,14 @@ enum InterfaceDescriptors_t {
 /** Endpoint size in bytes */
 #define JOYSTICK_EPSIZE 64
 
+/** HID polling interval. Standalone macros advance one 8 ms frame per report, so they keep the
+ *  125 Hz rate; the UART relay polls at 1 kHz so a report is never more than ~1 ms stale. */
+#ifdef EMBEDDED_MACRO_ENABLED
+#define HID_POLL_INTERVAL_MS 8
+#else
+#define HID_POLL_INTERVAL_MS 1
+#endif
+
 /** String descriptor IDs */
 enum StringDescriptors_t {
     STRING_ID_Language = 0, /**< Supported Languages string ID (must be zero) */

@@ -13,7 +13,7 @@ Controller Relay enables:
 
 ## Features
 
-- Real-time controller input relay via USB serial (1 Mbps baud rate)
+- Real-time controller input relay via USB serial (115200 baud)
 - Macro recording with millisecond precision
 - Hotkey system for in-game macro control
 - Macro looping (continues even when controller disconnected)
@@ -206,8 +206,10 @@ See the [firmware README](../firmware/README.md) for detailed instructions on bu
 
 ## Technical Details
 
-- **Baud Rate**: 1,000,000 bps (1 Mbps)
-- **Packet Rate**: 125 Hz (one packet every 8ms, matching USB polling rate)
+- **Baud Rate**: 115,200 bps (fixed by PABotBase; native firmware matches)
+- **Sampling**: Controller read every 1ms via a high-resolution timer
+- **Native firmware**: Packets sent only when state changes, plus a keepalive every 20ms
+- **PABotBase firmware**: Each state change is sent as `NEXT_CMD_INTERRUPT` + a 500ms state command, so it replaces the running command instead of queueing behind it (the same approach PokemonAutomation uses for manual control). Unchanged state is refreshed every 100ms. Requires PABotBase firmware with command-interrupt support.
 - **Packet Format**: 8-byte controller state packets
 - **Macro Format**: Human-readable text format (`.macro` files) with include support and loop syntax
 - **Macro Includes**: Support for `@filename.macro,*N` to include and repeat macros N times

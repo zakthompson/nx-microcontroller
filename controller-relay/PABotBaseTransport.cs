@@ -2,13 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Ports;
+using System.Linq;
 using static SwitchController.SwitchControllerConstants;
 
 namespace SwitchController
 {
     /// <summary>
     /// Transport for PokemonAutomation PABotBase firmware protocol:
-    /// CRC32C framing, sequence numbers, 4-command queue, OEM controller support
+    /// CRC32C framing, sequence numbers, 4-command queue, OEM controller support.
+    /// The device runs queued commands in order, so each state change is preceded by
+    /// NEXT_CMD_INTERRUPT (as PA's own manual control does) to replace the running command
+    /// immediately instead of waiting behind it.
     /// </summary>
     public class PABotBaseTransport : IControllerTransport
     {
@@ -17,17 +21,17 @@ namespace SwitchController
         private readonly List<byte> _rxBuffer = new List<byte>();
         private readonly Stopwatch _clock = Stopwatch.StartNew();
         private long _lastSendTimeMs;
+        private ControllerState? _lastSentState;
 
         // Controller configuration
         private readonly uint _controllerId;
         private readonly bool _useOemFormat;
         private readonly bool _resetMode;
-        private readonly int _sendIntervalMs;
-        private readonly ushort _commandDurationMs;
 
-        // In-flight command tracking
-        private readonly Queue<uint> _inFlightSeqnums = new Queue<uint>();
-        private readonly Dictionary<uint, (byte[] message, long sentAtMs)> _inFlightMessages = new Dictionary<uint, (byte[], long)>();
+        // Messages awaiting an ACK, in seqnum order. The device rejects any seqnum past a
+        // missing one, so retransmission must replay them all in order.
+        private readonly SortedDictionary<uint, (byte[] message, long sentAtMs)> _unacked =
+            new SortedDictionary<uint, (byte[], long)>();
 
 
         /// <param name="controllerId">PA controller type ID</param>
@@ -41,9 +45,6 @@ namespace SwitchController
             _controllerId = controllerId;
             _useOemFormat = IsOemController(controllerId);
             _resetMode = resetMode;
-            bool isWireless = (controllerId & 0x80) != 0;
-            _sendIntervalMs = isWireless ? PA_SEND_INTERVAL_WIRELESS_MS : PA_SEND_INTERVAL_WIRED_MS;
-            _commandDurationMs = isWireless ? PA_COMMAND_DURATION_WIRELESS_MS : PA_COMMAND_DURATION_WIRED_MS;
         }
 
         public bool Connect(SerialPort port)
@@ -62,8 +63,8 @@ namespace SwitchController
 
                 _port.DiscardInBuffer();
                 _nextSeqnum = 1;
-                _inFlightSeqnums.Clear();
-                _inFlightMessages.Clear();
+                _unacked.Clear();
+                _lastSentState = null;
 
                 // Send SEQNUM_RESET (0x40) with seqnum=0
                 Console.Write("\n  Sending seqnum reset... ");
@@ -107,9 +108,18 @@ namespace SwitchController
 
                 // Clear any residual commands on the device
                 Console.Write("  Stopping all commands... ");
-                if (!StopAllCommands())
+                if (!SendRequestAndWaitForAck(PA_MSG_REQUEST_STOP))
                 {
                     Console.WriteLine("no ACK");
+                    return false;
+                }
+                Console.WriteLine("OK");
+
+                // Low-latency state changes depend on command interrupts
+                Console.Write("  Checking command interrupt support... ");
+                if (!SendRequestAndWaitForAck(PA_MSG_REQUEST_NEXT_CMD_INTERRUPT))
+                {
+                    Console.WriteLine("no ACK (update the PABotBase firmware)");
                     return false;
                 }
                 Console.WriteLine("OK");
@@ -128,32 +138,31 @@ namespace SwitchController
             if (_port == null || !_port.IsOpen) return;
 
             long now = _clock.ElapsedMilliseconds;
+            long sinceLastSend = now - _lastSendTimeMs;
+            bool changed = !_lastSentState.HasValue || !_lastSentState.Value.Equals(state);
 
-            // Rate-limit to configured interval
-            if (now - _lastSendTimeMs < _sendIntervalMs) return;
+            // Changes go out as soon as the line allows; unchanged state is only refreshed
+            // so the held command never expires
+            if (sinceLastSend < (changed ? PA_MIN_SEND_INTERVAL_MS : PA_REFRESH_INTERVAL_MS)) return;
+            if (_unacked.Count >= PA_MAX_UNACKED) return;
 
-            // Only send when queue has space
-            if (_inFlightSeqnums.Count >= PA_QUEUE_SIZE) return;
+            uint interruptSeqnum = _nextSeqnum++;
+            byte[] interrupt = FrameMessage(PA_MSG_REQUEST_NEXT_CMD_INTERRUPT, BitConverter.GetBytes(interruptSeqnum));
 
-            uint seqnum = _nextSeqnum++;
-            byte[] payload;
-            byte msgType;
+            uint commandSeqnum = _nextSeqnum++;
+            byte[] command = _useOemFormat
+                ? FrameMessage(PA_MSG_OEM_CONTROLLER_BUTTONS, BuildOemControllerPayload(commandSeqnum, state))
+                : FrameMessage(PA_MSG_WIRED_CONTROLLER_STATE, BuildWiredControllerPayload(commandSeqnum, state));
 
-            if (_useOemFormat)
-            {
-                payload = BuildOemControllerPayload(seqnum, state);
-                msgType = PA_MSG_OEM_CONTROLLER_BUTTONS;
-            }
-            else
-            {
-                payload = BuildWiredControllerPayload(seqnum, state);
-                msgType = PA_MSG_WIRED_CONTROLLER_STATE;
-            }
+            // One write keeps the pair in a single USB transfer
+            byte[] both = new byte[interrupt.Length + command.Length];
+            interrupt.CopyTo(both, 0);
+            command.CopyTo(both, interrupt.Length);
+            _port.Write(both, 0, both.Length);
 
-            byte[] message = FrameMessage(msgType, payload);
-            _port.Write(message, 0, message.Length);
-            _inFlightSeqnums.Enqueue(seqnum);
-            _inFlightMessages[seqnum] = (message, now);
+            _unacked[interruptSeqnum] = (interrupt, now);
+            _unacked[commandSeqnum] = (command, now);
+            _lastSentState = state;
             _lastSendTimeMs = now;
         }
 
@@ -178,8 +187,7 @@ namespace SwitchController
         public void Dispose()
         {
             _port = null;
-            _inFlightSeqnums.Clear();
-            _inFlightMessages.Clear();
+            _unacked.Clear();
         }
 
         private uint? ReadControllerMode()
@@ -231,13 +239,13 @@ namespace SwitchController
             return null;
         }
 
-        private bool StopAllCommands()
+        private bool SendRequestAndWaitForAck(byte messageType)
         {
             if (_port == null) return false;
 
             uint seqnum = _nextSeqnum++;
             byte[] payload = BitConverter.GetBytes(seqnum);
-            byte[] message = FrameMessage(PA_MSG_REQUEST_STOP, payload);
+            byte[] message = FrameMessage(messageType, payload);
             _port.Write(message, 0, message.Length);
 
             return WaitForAck(2000);
@@ -294,26 +302,21 @@ namespace SwitchController
 
         private void HandleMessage(byte type, byte[] payload)
         {
-            if (IsAck(type))
+            if (IsAck(type) && payload.Length >= 4)
             {
-                // Any ack type (0x10-0x1f) — no action needed during main loop
+                _unacked.Remove(BitConverter.ToUInt32(payload, 0));
             }
             else if (type == PA_MSG_COMMAND_FINISHED && payload.Length >= 4)
             {
                 // Device tells us a command finished; we must ACK it
                 uint finishedSeqnum = BitConverter.ToUInt32(payload, 0);
                 SendAckRequest(finishedSeqnum);
-
-                if (payload.Length >= 8)
-                {
-                    uint originalSeqnum = BitConverter.ToUInt32(payload, 4);
-                    RemoveInFlight(originalSeqnum);
-                }
             }
             else if (type == PA_MSG_COMMAND_DROPPED && payload.Length >= 4)
             {
-                uint droppedSeqnum = BitConverter.ToUInt32(payload, 0);
-                RemoveInFlight(droppedSeqnum);
+                // Resend the current state on the next cycle
+                _unacked.Remove(BitConverter.ToUInt32(payload, 0));
+                _lastSentState = null;
             }
             // Info messages (0x20-0x3f) and errors (0x00-0x0f) are silently ignored
         }
@@ -327,31 +330,18 @@ namespace SwitchController
             _port.Write(message, 0, message.Length);
         }
 
-        private void RemoveInFlight(uint seqnum)
-        {
-            _inFlightMessages.Remove(seqnum);
-            int count = _inFlightSeqnums.Count;
-            for (int i = 0; i < count; i++)
-            {
-                uint s = _inFlightSeqnums.Dequeue();
-                if (s != seqnum)
-                    _inFlightSeqnums.Enqueue(s);
-            }
-        }
-
         private void RetransmitTimedOut()
         {
-            if (_port == null || !_port.IsOpen) return;
+            if (_port == null || !_port.IsOpen || _unacked.Count == 0) return;
 
             long now = _clock.ElapsedMilliseconds;
-            foreach (var kvp in _inFlightMessages)
+            if (now - _unacked.First().Value.sentAtMs <= PA_RETRANSMIT_MS) return;
+
+            foreach (uint seqnum in _unacked.Keys.ToList())
             {
-                if (now - kvp.Value.sentAtMs > PA_RETRANSMIT_MS)
-                {
-                    _port.Write(kvp.Value.message, 0, kvp.Value.message.Length);
-                    _inFlightMessages[kvp.Key] = (kvp.Value.message, now);
-                    break; // One per cycle
-                }
+                byte[] message = _unacked[seqnum].message;
+                _port.Write(message, 0, message.Length);
+                _unacked[seqnum] = (message, now);
             }
         }
 
@@ -360,7 +350,7 @@ namespace SwitchController
             byte[] oemState = state.ToOemState(); // 10 bytes
             byte[] payload = new byte[4 + 2 + oemState.Length]; // seqnum + ms + state
             BitConverter.GetBytes(seqnum).CopyTo(payload, 0);
-            BitConverter.GetBytes(_commandDurationMs).CopyTo(payload, 4);
+            BitConverter.GetBytes(PA_COMMAND_HOLD_MS).CopyTo(payload, 4);
             Array.Copy(oemState, 0, payload, 6, oemState.Length);
             return payload;
         }
@@ -370,7 +360,7 @@ namespace SwitchController
             // 13 bytes: seqnum(4) + milliseconds(2) + buttons0 + buttons1 + dpad + LX + LY + RX + RY
             byte[] payload = new byte[13];
             BitConverter.GetBytes(seqnum).CopyTo(payload, 0);
-            BitConverter.GetBytes(_commandDurationMs).CopyTo(payload, 4);
+            BitConverter.GetBytes(PA_COMMAND_HOLD_MS).CopyTo(payload, 4);
             payload[6] = state.Buttons0;
             payload[7] = state.Buttons1;
             payload[8] = state.Dpad;

@@ -104,7 +104,7 @@ clean: mostlyclean
 	rm -f embedded_macro.h
 	rm -f JoystickStandalone.hex JoystickStandalone.elf JoystickStandalone.eep JoystickStandalone.bin
 	rm -f JoystickStandalone.lss JoystickStandalone.sym JoystickStandalone.map
-	rm -f obj/JoystickStandalone.o obj/JoystickStandalone.d
+	rm -rf obj/standalone
 
 # Build standalone macro firmware
 # Usage: make standalone MACRO=path/to/macro.json [LOOP=1]
@@ -117,7 +117,7 @@ standalone:
 	@echo "Converting macro to C header..."
 	@python3 ../macro_to_c.py $(MACRO) $(if $(LOOP),--loop,) -o embedded_macro.h
 	@echo "Building standalone firmware with embedded macro..."
-	@$(MAKE) TARGET=JoystickStandalone \
+	@$(MAKE) TARGET=JoystickStandalone OBJDIR=obj/standalone \
 		SRC="JoystickStandalone.c Descriptors.c ../shared/macro_player.c ../shared/emulated_spi.c $(LUFA_SRC_USB)" \
 		CC_FLAGS="$(CC_FLAGS) -DEMBEDDED_MACRO_ENABLED=1 -include embedded_macro.h" all
 	@echo "Standalone firmware built: JoystickStandalone.hex"

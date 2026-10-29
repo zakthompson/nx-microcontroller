@@ -74,7 +74,7 @@ void HID_Task(void)
 
         // Track elapsed time (USB endpoint polls at ~125Hz = every 8ms)
         static uint32_t millis = 0;
-        millis += 8;
+        millis += HID_POLL_INTERVAL_MS;
 
         // Get report from macro player
         bool playing = macro_player_get_report(millis, report);
