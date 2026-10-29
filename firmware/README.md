@@ -326,7 +326,7 @@ BOARD = TEENSY2PP
 
 ### USB Polling Rate
 
-The firmware uses **125 Hz (8ms per frame)** polling rate to match standard USB HID devices. This is defined in the USB descriptor and must match the macro format's frame duration.
+The AVR UART relay firmware requests **1000 Hz (1ms)** polling so a report is never more than ~1ms stale. Standalone macro firmware keeps **125 Hz (8ms per frame)** because it advances one macro frame per report. On AVR both come from `HID_POLL_INTERVAL_MS` in `avr/Descriptors.h`, selected by whether `EMBEDDED_MACRO_ENABLED` is defined; the two builds use separate object directories (`obj/` and `obj/standalone/`) so they never share a stale `Descriptors.o`.
 
 ## Troubleshooting
 
@@ -384,7 +384,7 @@ The firmware uses **125 Hz (8ms per frame)** polling rate to match standard USB 
 
 ## Technical Details
 
-- **USB Polling Rate**: 125 Hz (8ms interval)
+- **USB Polling Rate**: 1000 Hz (1ms) for AVR UART relay firmware, 125 Hz (8ms) for standalone macro firmware
 - **Packet Format**: 8-byte HID input reports
 - **PROGMEM Usage**: Embedded macros stored in flash memory to save RAM
 - **Timing**: Hardware timer-based for precise frame timing

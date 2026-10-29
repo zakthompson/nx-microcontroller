@@ -9,6 +9,7 @@ namespace SwitchController
     {
         // Timing and input settings
         public const int UPDATE_INTERVAL_MS = 1;        // 1ms = 1000Hz polling for minimum latency
+        public const int KEEPALIVE_INTERVAL_MS = 20;    // Native firmware: resend unchanged state so a dropped packet can't stick
         public const int USB_FRAME_INTERVAL_MS = 8;     // 125Hz USB polling (must match firmware descriptor)
         public const bool INVERT_Y_AXIS = true;         // Nintendo-style "up is negative"
 
@@ -76,12 +77,12 @@ namespace SwitchController
         public const byte PA_MSG_COMMAND_DROPPED = 0x06;
         public const int PA_PROTOCOL_OVERHEAD = 6;         // ~len(1) + type(1) + CRC32(4)
         public const int PA_MAX_PACKET_SIZE = 64;
-        public const int PA_QUEUE_SIZE = 4;
-        public const int PA_RETRANSMIT_MS = 100;
-        public const int PA_SEND_INTERVAL_WIRED_MS = 8;    // 125Hz for wired controllers
-        public const int PA_SEND_INTERVAL_WIRELESS_MS = 15; // ~67Hz for wireless controllers
-        public const ushort PA_COMMAND_DURATION_WIRED_MS = 24;   // 3x send interval — ensures next command is queued before current expires
-        public const ushort PA_COMMAND_DURATION_WIRELESS_MS = 45; // 3x send interval
+        public const byte PA_MSG_REQUEST_NEXT_CMD_INTERRUPT = 0x4c;
+        public const int PA_RETRANSMIT_MS = 50;
+        public const int PA_MAX_UNACKED = 16;               // Stop issuing while the device isn't acking, so retransmits stay bounded
+        public const int PA_MIN_SEND_INTERVAL_MS = 4;       // Caps stick-driven bursts below 115200 baud line capacity
+        public const int PA_REFRESH_INTERVAL_MS = 100;      // Re-issue unchanged state well before the hold expires
+        public const ushort PA_COMMAND_HOLD_MS = 500;       // Each state is interrupted by the next; this only bounds a stuck input if the relay dies
 
         // PA controller type IDs — Nintendo Switch 1
         public const uint PA_CID_NS1_WIRED_CONTROLLER = 0x1000;

@@ -88,6 +88,71 @@ namespace SwitchController
             public IntPtr InheritedFromUniqueProcessId;
         }
 
+        /// <summary>
+        /// Sets process-wide scheduling information, such as power throttling policy
+        /// </summary>
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetProcessInformation(
+            IntPtr hProcess,
+            int processInformationClass,
+            ref PROCESS_POWER_THROTTLING_STATE processInformation,
+            uint processInformationSize);
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GetCurrentProcess();
+
+        public const int ProcessPowerThrottling = 4;
+        public const uint PROCESS_POWER_THROTTLING_CURRENT_VERSION = 1;
+        public const uint PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 0x1;
+        public const uint PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION = 0x4;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PROCESS_POWER_THROTTLING_STATE
+        {
+            public uint Version;
+            public uint ControlMask;
+            public uint StateMask;
+        }
+
+        #endregion
+
+        #region Timing APIs
+
+        /// <summary>
+        /// Creates a waitable timer; with CREATE_WAITABLE_TIMER_HIGH_RESOLUTION it is precise to well under 1 ms
+        /// </summary>
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern IntPtr CreateWaitableTimerExW(
+            IntPtr lpTimerAttributes,
+            string? lpTimerName,
+            uint dwFlags,
+            uint dwDesiredAccess);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetWaitableTimer(
+            IntPtr hTimer,
+            ref long pDueTime,
+            int lPeriod,
+            IntPtr pfnCompletionRoutine,
+            IntPtr lpArgToCompletionRoutine,
+            bool fResume);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr hObject);
+
+        [DllImport("winmm.dll")]
+        public static extern uint timeBeginPeriod(uint uPeriod);
+
+        [DllImport("winmm.dll")]
+        public static extern uint timeEndPeriod(uint uPeriod);
+
+        public const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x2;
+        public const uint TIMER_ALL_ACCESS = 0x1F0003;
+        public const uint INFINITE = 0xFFFFFFFF;
+
         #endregion
     }
 }

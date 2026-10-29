@@ -1,3 +1,4 @@
+using System;
 using static SwitchController.SwitchControllerConstants;
 
 namespace SwitchController
@@ -5,12 +6,20 @@ namespace SwitchController
     /// <summary>
     /// Protocol-neutral 7-byte controller state shared by all transports
     /// </summary>
-    public struct ControllerState
+    public struct ControllerState : IEquatable<ControllerState>
     {
         public byte Buttons0;   // bits 0-7:  Y, B, A, X, L, R, ZL, ZR
         public byte Buttons1;   // bits 8-15: Minus, Plus, LClick, RClick, Home, Capture
         public byte Dpad;       // HAT value 0-8
         public byte LX, LY, RX, RY;  // stick axes (0x00-0xFF, 0x80 = center)
+
+        public bool Equals(ControllerState other) =>
+            Buttons0 == other.Buttons0 && Buttons1 == other.Buttons1 && Dpad == other.Dpad &&
+            LX == other.LX && LY == other.LY && RX == other.RX && RY == other.RY;
+
+        public override bool Equals(object? obj) => obj is ControllerState other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(Buttons0, Buttons1, Dpad, LX, LY, RX, RY);
 
         /// <summary>
         /// Returns a neutral idle state (no buttons pressed, sticks centered)
