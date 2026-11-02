@@ -27,6 +27,7 @@ namespace SwitchController
         private readonly uint _controllerId;
         private readonly bool _useOemFormat;
         private readonly bool _resetMode;
+        private readonly Action<string>? _log;
 
         // Messages awaiting an ACK, in seqnum order. The device rejects any seqnum past a
         // missing one, so retransmission must replay them all in order.
@@ -40,11 +41,13 @@ namespace SwitchController
         /// during handshake. This wipes pairing state and puts the virtual controller into
         /// discoverable mode so the Switch can pair with it.
         /// </param>
-        public PABotBaseTransport(uint controllerId = PA_CID_NS1_WIRELESS_PRO_CONTROLLER, bool resetMode = false)
+        /// <param name="log">Receives firmware-reported problems such as a console disconnect</param>
+        public PABotBaseTransport(uint controllerId = PA_CID_NS1_WIRELESS_PRO_CONTROLLER, bool resetMode = false, Action<string>? log = null)
         {
             _controllerId = controllerId;
             _useOemFormat = IsOemController(controllerId);
             _resetMode = resetMode;
+            _log = log;
         }
 
         public bool Connect(SerialPort port)
@@ -141,8 +144,9 @@ namespace SwitchController
             long sinceLastSend = now - _lastSendTimeMs;
             bool changed = !_lastSentState.HasValue || !_lastSentState.Value.Equals(state);
 
-            // Changes go out as soon as the line allows; unchanged state is only refreshed
-            // so the held command never expires
+            // Changes go out as soon as the line allows. Held input is refreshed so its command
+            // never expires; neutral is not, since an expired command leaves the controller neutral.
+            if (!changed && state.Equals(ControllerState.Idle)) return;
             if (sinceLastSend < (changed ? PA_MIN_SEND_INTERVAL_MS : PA_REFRESH_INTERVAL_MS)) return;
             if (_unacked.Count >= PA_MAX_UNACKED) return;
 
@@ -318,7 +322,12 @@ namespace SwitchController
                 _unacked.Remove(BitConverter.ToUInt32(payload, 0));
                 _lastSentState = null;
             }
-            // Info messages (0x20-0x3f) and errors (0x00-0x0f) are silently ignored
+            else if ((type == PA_MSG_ERROR_DISCONNECTED || type == PA_MSG_ERROR_WARNING) && payload.Length >= 2)
+            {
+                string what = type == PA_MSG_ERROR_DISCONNECTED ? "Console disconnected the controller" : "Firmware warning";
+                _log?.Invoke($"{what} (PABotBase error code 0x{BitConverter.ToUInt16(payload, 0):X4})");
+            }
+            // Other info messages (0x20-0x3f) and errors (0x00-0x0f) are silently ignored
         }
 
         private void SendAckRequest(uint seqnum)

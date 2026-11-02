@@ -209,7 +209,7 @@ See the [firmware README](../firmware/README.md) for detailed instructions on bu
 - **Baud Rate**: 115,200 bps (fixed by PABotBase; native firmware matches)
 - **Sampling**: Controller read every 1ms via a high-resolution timer
 - **Native firmware**: Packets sent only when state changes, plus a keepalive every 20ms
-- **PABotBase firmware**: Each state change is sent as `NEXT_CMD_INTERRUPT` + a 500ms state command, so it replaces the running command instead of queueing behind it (the same approach PokemonAutomation uses for manual control). Unchanged state is refreshed every 100ms. Requires PABotBase firmware with command-interrupt support.
+- **PABotBase firmware**: Each state change is sent as `NEXT_CMD_INTERRUPT` + a 2s state command, so it replaces the running command instead of queueing behind it (the same approach PokemonAutomation uses for manual control). Held input is refreshed every 1s; neutral is sent once and left to expire, so nothing is sent while idle. Console disconnects reported by the firmware are logged. Requires PABotBase firmware with command-interrupt support.
 - **Packet Format**: 8-byte controller state packets
 - **Macro Format**: Human-readable text format (`.macro` files) with include support and loop syntax
 - **Macro Includes**: Support for `@filename.macro,*N` to include and repeat macros N times

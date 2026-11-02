@@ -81,8 +81,13 @@ namespace SwitchController
         public const int PA_RETRANSMIT_MS = 50;
         public const int PA_MAX_UNACKED = 16;               // Stop issuing while the device isn't acking, so retransmits stay bounded
         public const int PA_MIN_SEND_INTERVAL_MS = 4;       // Caps stick-driven bursts below 115200 baud line capacity
-        public const int PA_REFRESH_INTERVAL_MS = 100;      // Re-issue unchanged state well before the hold expires
-        public const ushort PA_COMMAND_HOLD_MS = 500;       // Each state is interrupted by the next; this only bounds a stuck input if the relay dies
+        // Matches PA's manual control: held input is re-issued every 1s as a 2s command, and neutral
+        // is sent once and then left to expire. Interrupting the idle command every 100ms instead
+        // coincided with the console dropping the controller after ~20s of inactivity.
+        public const int PA_REFRESH_INTERVAL_MS = 1000;
+        public const ushort PA_COMMAND_HOLD_MS = 2000;
+        public const byte PA_MSG_ERROR_WARNING = 0x07;
+        public const byte PA_MSG_ERROR_DISCONNECTED = 0x08;
 
         // PA controller type IDs — Nintendo Switch 1
         public const uint PA_CID_NS1_WIRED_CONTROLLER = 0x1000;

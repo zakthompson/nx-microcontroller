@@ -196,7 +196,7 @@ namespace SwitchController
             {
                 string mode = _pairMode ? " (pair mode)" : "";
                 LogStatus($"Connecting with PABotBase firmware ({SwitchControllerConstants.ControllerTypeName(controllerId)}{mode})...");
-                return TryConnect(new PABotBaseTransport(controllerId, _pairMode), serial, "PABotBase");
+                return TryConnect(new PABotBaseTransport(controllerId, _pairMode, LogStatus), serial, "PABotBase");
             }
 
             // Auto-detect
@@ -213,7 +213,7 @@ namespace SwitchController
                 native.Dispose();
 
                 LogStatus($"Trying PABotBase handshake ({SwitchControllerConstants.ControllerTypeName(controllerId)})...");
-                var pa = new PABotBaseTransport(controllerId, _pairMode);
+                var pa = new PABotBaseTransport(controllerId, _pairMode, LogStatus);
                 if (pa.Connect(serial.Port))
                 {
                     LogStatus("Connected with PABotBase firmware.");
